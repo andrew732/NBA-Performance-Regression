@@ -1,7 +1,7 @@
 ---
-title: "NBA Prediction Regression"
+title: "Terrorism Prediction"
 author: "STAT 471/571/701 Modern Data Mining"
-date: "12/??/2018"
+date: "12/12/2018"
 output:
   html_document:
     code_folding: show
@@ -21,23 +21,50 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.width = 7, fig.height = 4)
 if(!require("pacman")) install.packages("pacman")
-pacman::p_load(dplyr, ggplot2, glmnet, car)
+pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest)
 ```
+
+Insert TOC, headers, etc...
+
+
+## Introduction
+
+In this project we wanted to see what factors played into terrorism. Our dataset is from (https://www.start.umd.edu/gtd/downloads/Codebook.pdf) ... 
+
+# sumworking notes:
+
+"The GTD does not include plots or conspiracies that are not enacted, or at least attempted. For
+an event to be included in the GTD, the attackers must be “out the door,” en route to execute
+the attack. Planning, reconnaissance, and acquiring supplies do not meet this threshold.
+The GTD does include attacks that were attempted but ultimately unsuccessful. The
+circumstances vary depending on tactics (for details see the success variable, below). However,
+in general if a bomb is planted but fails to detonate; if an arsonist is intercepted by authorities
+before igniting a fire; or, if an assassin attempts and fails to kill his or her intended target, the
+attack is considered for inclusion in the GTD, and marked success=0."
+
+(nperpcap)
+Numeric Variable
+This field records the number of perpetrators taken into custody. “-99” or
+“Unknown” appears when there is evidence of captured, but the number is not
+reported.
 
 ```{r data preparation, include=F}
 data <- read.csv("terrorism.csv")
 ```
 
 ```{r, include=F}
-data_2017 <- data %>% filter(iyear == 2017)
+data_1997 <- data %>% filter(iyear >= 1997)
 ```
+
 
 ```{r, include = F}
 data_2017_filtered <- data_2017 %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related)) 
 
 # remove text or IDs
-data_2017_filtered <- data_2017_filtered %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
+data_1997_f<- data_1997_f %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
 ```
+
+
 
 ```{r, include = F}
 # Ransom!
@@ -52,8 +79,56 @@ data_2017_filtered <- data_2017_filtered %>% select(-c(country, region, attackty
 #data_police <- data %>% filter(targtype1_txt == 'Police')
 #data_military <- data %>% filter(targtype1_txt == 'Military')
 #data_government <- data %>% filter(targtype1 == 2 | targtype1 == 7)
-summary(data$nkill)
-summary(data$nwound)
+# hist(data$nkill)
+# hist(data$nwound)
+# summary(data$nkill)
+# summary(data$nwound)
+# summary(data$propcomment)
 
 # Notes: should we filter out nkill - nwound, propcomment stuff? predict on these?
+# eric: probably yes, can't really predict on propcomment with sentiment analysis. other two are pretty heavily skewed
+# maybe not do linear regression the first two, but maybe try RFs/tree for those two?
+# maybe remove eventid, corp1, target1, gname, weapdetail?
+# remove nperps, nperpcap, claimed, property, propvalue, nkillus, nkillter, nwoundus, nwoundte due to high number of observations missing?
+```
+
+
+
+```{r, include=F}
+
+# dealing with missing values
+data_1997_f <- data_1997_f %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail)) # remove predictors with large number of NAs (looking at summary())
+# also, considering the number of US wonded/kill/perp is quite specific, it makes sense that many incident do not report this. same logic for claimed, property,and propvalue.
+# nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
+
+# re-code -9 or -99 to NA
+data_1997_f$vicinity[data_1997_f$vicinity < 0] <- NA
+data_1997_f$doubtterr[data_1997_f$doubtterr < 0] <- NA
+data_1997_f$ishostkid[data_1997_f$ishostkid < 0] <- NA
+
+
+data_omit <- na.omit(data_1997_f)
+summary(data_omit)
+```
+
+
+```{r, include=F}
+# removal of categorical columns with too many levels (to make usuable for linear regression and RF due to 53 categorical level limit for RFs)
+# also remove eventid
+data_omit_short <- data_omit %>% select(-c(eventid, country_txt, provstate, city, corp1, target1, gname, targsubtype1_txt, natlty1_txt))
+
+lm1 <- lm(data=data_omit_short, nkill~. )
+summary(lm1)
+
+glm1 <- glm(data=data_omit_short, success~. )
+summary(glm1)
+```
+
+
+
+```{r, include=F}
+# RF
+
+#lol doesn't run too large still
+rf1 <- randomForest(data=data_omit_short, success~., mtry=10, ntree=100)
 ```
