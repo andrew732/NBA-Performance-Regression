@@ -1,8 +1,12 @@
 ---
-title: "Terrorism Prediction"
+title: "Predicting Outcome of Terrorist Attacks"
 author: "STAT 471/571/701 Modern Data Mining"
 date: "12/12/2018"
+graphics: yes
 output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
   html_document:
     code_folding: show
     highlight: haddock
@@ -10,12 +14,15 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
-  pdf_document:
-    toc: yes
-    toc_depth: '4'
   word_document:
     toc: yes
     toc_depth: '4'
+subtitle: STAT 471/571/701, Fall 2018
+header-includes:
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyfoot[CO,CE]{}
+- \fancyfoot[LE,RO]{\thepage}
 ---
 
 ```{r setup, include=FALSE}
@@ -24,10 +31,23 @@ if(!require("pacman")) install.packages("pacman")
 pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest)
 ```
 
-Insert TOC, headers, etc...
+# Executive Summary
 
+Diabetes is a chronic medical condition that plagues millions of Americans. If managed well, patients can lead relatively normal lives, but if improperly managed, patients can be continuously admitted and readmitted to hospitals. Readmissions are costly and in 2012, the Centers for Medicare and Medicaid Services announced in
+2012 that they would no longer reimburse hospitals for services if a patient was readmitted with
+complications within 30 days of discharge.
 
-## Introduction
+This leads to the question - how can hospitals identify patients that are likely to be readmitted before it happens? The answer to this lies in statistical analysis of patient data. Using demographic data, clinical data from tests conducted, and past patient data from over 100,000 patients in 1999 to 2008, we can apply statistical models to best predict readmitted patients.
+
+After applying different models (LASSO classification and random forests), we are able to select the best one through various decision criterions. While there are improvements that can be made to the study, our final model was fairly accurate. It achieves an accuracy of 0.114 and a misclassification error of 0.220, which weighs the fact that readmission is costly to a hospital compared to more intensive care. There are 9 predictor variables used in the model, among which are the diagnoses results and the change in medication level.
+
+\newpage
+
+# Goal of the study
+
+# Data Summary / EDA
+
+# Findings / Analysis
 
 In this project we wanted to see what factors played into terrorism. Our dataset is from (https://www.start.umd.edu/gtd/downloads/Codebook.pdf) ... 
 
@@ -52,33 +72,55 @@ reported.
 data <- read.csv("terrorism.csv")
 ```
 
-```{r, include=F}
-data_1997 <- data %>% filter(iyear >= 1997)
-```
-
-
 ```{r, include = F}
-data_2017_filtered <- data_2017 %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related)) 
+# filter data
+data_clean <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related)) 
 
 # remove text or IDs
-data_1997_f<- data_1997_f %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
+data_clean <- data_clean %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
+
+# re-code -9 or -99 to NA
+data_clean <- data_clean %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail))# remove predictors with large number of NAs (looking at summary())
+# also, considering the number of US wonded/kill/perp is quite specific, it makes sense that many incident do not report this. same logic for claimed, property,and propvalue.
+# nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
+data_clean$vicinity[data_clean$vicinity < 0] <- NA
+data_clean$doubtterr[data_clean$doubtterr < 0] <- NA
+data_clean$ishostkid[data_clean$ishostkid < 0] <- NA
+data_clean <- na.omit(data_clean)
+summary(data_clean)
 ```
 
-
+```{r, include=F}
+# Take the most recent year, as well as all of the recent years
+data_2017 <- data_clean %>% filter(iyear == 2017)
+data_1997 <- data_clean %>% filter(iyear >= 1997)
+```
 
 ```{r, include = F}
-# Ransom!
-#data_ransom <- data %>% filter(ransom == 1)
-#data_multiple_2 <- data %>% filter(gname3 != "")
-#data_multiple_3 <- data %>% filter(gname3 != "")
-#data_usa <- data %>% filter(country == 217)
-#data_iraq <- data %>% filter(country == 92)
-#data_syria <- data %>% filter(country == 200)
-#data_developed <- data %>% filter(region == 1 | region == 8 | region == 4)
-#data_japan <- data %>% filter(country == 101)
-#data_police <- data %>% filter(targtype1_txt == 'Police')
-#data_military <- data %>% filter(targtype1_txt == 'Military')
-#data_government <- data %>% filter(targtype1 == 2 | targtype1 == 7)
+# subsets
+data_usa <- data_clean %>% filter(country_txt == "United States")
+data_iraq <- data_clean %>% filter(country_txt == "Iraq")
+data_syria <- data_clean %>% filter(country_txt == "Syria")
+data_developed <- data_clean %>% filter(region_txt == "North America" | region_txt == "Western Europe" | region_txt == "East Asia")
+data_japan <- data_clean %>% filter(country_txt == "Japan")
+data_police <- data_clean %>% filter(targtype1_txt == 'Police')
+data_military <- data_clean %>% filter(targtype1_txt == 'Military')
+data_government <- data_clean %>% filter(targtype1_txt == "Government (General)" | targtype1_txt == "Government (Diplomatic)")
+data_property <- data_clean %>% filter(propextent_txt != "")
+```
+
+```{r, include = F}
+# Subsets that require further cleaning!
+
+# filter data
+data_ransom <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related)) 
+
+# remove text or IDs
+data_ransom <- data_ransom %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
+data_ransom <- data %>% filter(ransom == 1)
+```
+
+```{r}
 # hist(data$nkill)
 # hist(data$nwound)
 # summary(data$nkill)
@@ -89,27 +131,9 @@ data_1997_f<- data_1997_f %>% select(-c(country, region, attacktype1, targtype1,
 # eric: probably yes, can't really predict on propcomment with sentiment analysis. other two are pretty heavily skewed
 # maybe not do linear regression the first two, but maybe try RFs/tree for those two?
 # maybe remove eventid, corp1, target1, gname, weapdetail?
-# remove nperps, nperpcap, claimed, property, propvalue, nkillus, nkillter, nwoundus, nwoundte due to high number of observations missing?
+# remove nperps, nperpcap, claimed, property, propvalue, nkillus, nkillter, nwoundus, nwoundte due to high number of observations missing?j
 ```
 
-
-
-```{r, include=F}
-
-# dealing with missing values
-data_1997_f <- data_1997_f %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail)) # remove predictors with large number of NAs (looking at summary())
-# also, considering the number of US wonded/kill/perp is quite specific, it makes sense that many incident do not report this. same logic for claimed, property,and propvalue.
-# nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
-
-# re-code -9 or -99 to NA
-data_1997_f$vicinity[data_1997_f$vicinity < 0] <- NA
-data_1997_f$doubtterr[data_1997_f$doubtterr < 0] <- NA
-data_1997_f$ishostkid[data_1997_f$ishostkid < 0] <- NA
-
-
-data_omit <- na.omit(data_1997_f)
-summary(data_omit)
-```
 
 
 ```{r, include=F}
@@ -123,7 +147,6 @@ summary(lm1)
 glm1 <- glm(data=data_omit_short, success~. )
 summary(glm1)
 ```
-
 
 
 ```{r, include=F}
