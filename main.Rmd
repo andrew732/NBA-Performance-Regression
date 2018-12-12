@@ -33,62 +33,115 @@ pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest)
 
 # Executive Summary
 
-Diabetes is a chronic medical condition that plagues millions of Americans. If managed well, patients can lead relatively normal lives, but if improperly managed, patients can be continuously admitted and readmitted to hospitals. Readmissions are costly and in 2012, the Centers for Medicare and Medicaid Services announced in
-2012 that they would no longer reimburse hospitals for services if a patient was readmitted with
-complications within 30 days of discharge.
+Acts of intentional violence at a sub-national level have occurred since the development of civilizations. From religious acts of terror to violence with political intent, terrorism has manifested itself in various forms throughout history. The term itself was developed in the 1790s to describe Maximilien Robespierre's Jacobin regime as the "Reign of Terror", but it was popularized following the 1983 Beirut barracks bombings and the 2001 World Trade Center attacks. These acts of violence, regardless of motive, if successful, often claim the lives of the innocent and bystanders.[1]
 
-This leads to the question - how can hospitals identify patients that are likely to be readmitted before it happens? The answer to this lies in statistical analysis of patient data. Using demographic data, clinical data from tests conducted, and past patient data from over 100,000 patients in 1999 to 2008, we can apply statistical models to best predict readmitted patients.
+This leads to the question - how can people use historical data to predict the outcome of terrorist activity? The answer to this lies in statistical analysis of terrorist incidents. Using location data, attack type, group names, target data, and other past terrorism data, we can apply statistical models to best predict the outcome of events - success, number of killed/wounded, total property damage, etc. With a better understanding of what factors can lead to a foiled or successful attempt, people can better try to prevent such attacks in the future.
 
-After applying different models (LASSO classification and random forests), we are able to select the best one through various decision criterions. While there are improvements that can be made to the study, our final model was fairly accurate. It achieves an accuracy of 0.114 and a misclassification error of 0.220, which weighs the fact that readmission is costly to a hospital compared to more intensive care. There are 9 predictor variables used in the model, among which are the diagnoses results and the change in medication level.
+>SUMMARY OF SOME RESULTS<
 
 \newpage
 
-# Goal of the study
-
 # Data Summary / EDA
 
-# Findings / Analysis
+## Data Origins
 
-In this project we wanted to see what factors played into terrorism. Our dataset is from (https://www.start.umd.edu/gtd/downloads/Codebook.pdf) ... 
+The origins of the data is the Global Terrorism Database (GTD). The GTD was developed by the National Consortium for the Study of Terrorism and Responses to Terrorism (START) at the University of Maryland, College Park, in Maryland, USA. The database contains incidents of terrorism from 1970 to 2017, and is still under development. There are over 181,000 incidents in the database and 135 factors, including a few main factors listed below:
 
-# sumworking notes:
+* `iyear`, `imonth`, `iday`: incident year, month, and day
+* `country_txt`, `region_txt`, `provstate`, `city`: country, region, providence/state, city names
+* `crit1`, `crit2`, `crit3`: which of the three criterion the incident satisfies (see below)
+* `attacktype1_txt`: a text descriptor for the attack type; there are other variables regarding the type of attack
+* `targtype1_txt`, `targsubtype1_txt`, `natlty1_txt`: a text descriptor for the target type, subtype, and nationality; there are other variables regarding the type of targets
+* `gname`, `gnucertain1`, `individual`:  group name, and indicator variables for presence of guns and if individual attack
+* `weaptype1_txt`, `weapsubtype1_txt`: type of weapon used in attack
+*	`success`, `nkill`, `nwound`, `propextent_txt`: indicates if the incident was successful, the number of killed and wounded, and the extent of property damage (respectively)
 
-"The GTD does not include plots or conspiracies that are not enacted, or at least attempted. For
-an event to be included in the GTD, the attackers must be “out the door,” en route to execute
-the attack. Planning, reconnaissance, and acquiring supplies do not meet this threshold.
-The GTD does include attacks that were attempted but ultimately unsuccessful. The
-circumstances vary depending on tactics (for details see the success variable, below). However,
-in general if a bomb is planted but fails to detonate; if an arsonist is intercepted by authorities
-before igniting a fire; or, if an assassin attempts and fails to kill his or her intended target, the
-attack is considered for inclusion in the GTD, and marked success=0."
+To be included in the study, an incident must qualify with three fields:
+* The incident must be intentional – the result of a conscious calculation on the part of a
+perpetrator.
+* The incident must entail some level of violence or immediate threat of violence -including
+property violence, as well as violence against people.
+* The perpetrators of the incidents must be sub-national actors. The database does not
+include acts of state terrorism.
 
-(nperpcap)
-Numeric Variable
-This field records the number of perpetrators taken into custody. “-99” or
-“Unknown” appears when there is evidence of captured, but the number is not
-reported.
+Additionally, it must satisfy two of the following three criterion:
+* Criterion 1: The act must be aimed at attaining a political, economic, religious, or social
+goal. 
+* Criterion 2: There must be evidence of an intention to coerce, intimidate, or convey some
+other message to a larger audience (or audiences) than the immediate victims. 
+* Criterion 3: The action must be outside the context of legitimate warfare activities. 
 
-```{r data preparation, include=F}
+In general, the GTD does not include plots that are not enacted or attempted. For an incident to be considered, the attackers must be "out the door", or en route to execute the attack. This means, according to their handbook, "in general if a bomb is planted but fails to detonate; if an arsonist is intercepted by authorities before igniting a fire; or, if an assassin attempts and fails to kill his or her intended target, the attack is considered for inclusion in the GTD, and marked success=0."[2]
+
+## Goal of the study
+
+The goal of the study is to utilize data on terrorist attacks and identify which factors can be best used to predict the outcome of such attacks. In this study, we will be analyzing various outcomes, from success, number of wounded, number of killed, and total property damage. 
+
+## EDA
+
+```{r data preparation, include=F, cache=TRUE}
 data <- read.csv("terrorism.csv")
 ```
 
-```{r, include = F}
+```{r data cleaning, include = F, cache=TRUE}
 # filter data
-data_clean <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related)) 
+data_clean <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related, ishostkid)) 
 
 # remove text or IDs
 data_clean <- data_clean %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
 
 # re-code -9 or -99 to NA
-data_clean <- data_clean %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail))# remove predictors with large number of NAs (looking at summary())
-# also, considering the number of US wonded/kill/perp is quite specific, it makes sense that many incident do not report this. same logic for claimed, property,and propvalue.
-# nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
+data_clean <- data_clean %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail, eventid, corp1, target1))
 data_clean$vicinity[data_clean$vicinity < 0] <- NA
 data_clean$doubtterr[data_clean$doubtterr < 0] <- NA
-data_clean$ishostkid[data_clean$ishostkid < 0] <- NA
 data_clean <- na.omit(data_clean)
-summary(data_clean)
 ```
+
+
+```{r categorical, include = F, cache = TRUE}
+data_clean$extended <- as.factor(data_clean$extended)
+data_clean$specificity <- as.factor(data_clean$specificity)
+data_clean$vicinity <- as.factor(data_clean$vicinity)
+data_clean$crit1 <- as.factor(data_clean$crit1)
+data_clean$crit2 <- as.factor(data_clean$crit2)
+data_clean$crit3 <- as.factor(data_clean$crit3)
+data_clean$doubtterr <- as.factor(data_clean$doubtterr)
+data_clean$multiple <- as.factor(data_clean$multiple)
+data_clean$success <- as.factor(data_clean$success)
+data_clean$suicide <- as.factor(data_clean$suicide)
+data_clean$guncertain1 <- as.factor(data_clean$guncertain1)
+data_clean$individual <- as.factor(data_clean$individual)
+```
+
+First, we read in the data given in csv format. There are 181,691 observations and 135 total variables. However, this must be futher cleaned. There were three main steps in the data cleaning process for eliminating variables:
+
+1) There were many variables for multiple groups; for instance, there are 3 groups for target (target1, targettype1, targetsubtype1, corp1, target1, natlty1, etc.), 3 groups for attack type, 3 groups for claim, and 3 groups for weapon types. These are present in the case that multiple groups stage an attack, or multiple targets are targeted. However, for the most parts of the dataset, the second and third group for most predictors were NA, and thus were dropped.
+
+2) We filtered variables that were just encodings of other variables. For instance, there were two variables `country` and `country_txt`. The former is a number encoding for a country, while the latter is the name of the country. For purposes of easier readability, we kept the text description. 
+
+3) We finally dropped variables that contained too many NA's. This included number of killed US citizens, group that claimed the incident, etc. Considering the number of US wonded/kill/perp is quite specific, it makes sense that many incident do not report this. Since these caused our models to fail to run, we ended up removing this from the overall data set for the rest of the study.
+
+In general, this final cleaned dataset was used as a baseline for each of our subset analysis. See the appendix for the full list of removed variables. Unless otherwise noted, each subset will be derived from these 31 remaining variables (see below). Additionally, the -9 and -99s that were encoded for missing variables were coded into NA in R. We omitted these NA's from the cleaned dataset due to the large number of examples we had from the database already.
+
+```{r column names, echo = F, cache = TRUE}
+colnames(data_clean)
+```
+
+Let's first get a sense of the (cleaned) dataset as a whole. Through the summary of the dataset (see Appendix for full summary), we can elucidate a few key insights from the data. Dropping the NA's yielded 148,627 observations on 31 variables. 
+
+```{r dim, echo = F}
+dim(data_clean)
+```
+
+The years range from 1970 to 2017, with a huge left skew in data, meaning there are a lot more reported incidents in the recent years, which makes sense given the development of the Internet. Additionally, there are significantly more successful than unsuccessful incidents, likely due to the fact that only incidents where the perpetrators were "out of the door" were recorded, as aforementioned.
+
+```{r histogram, echo = F}
+par(mfrow = c(1, 2))
+hist(data_clean$iyear, main = "Histogram of incidents by year")
+plot(data_clean$success, main="Barplot of successful incidents")
+```
+
+From the histogram of incidents by year, it is clear that there is an influx of recent events, so it makes sense to generate a subset of data for recent events as well as those from past events. Thus, we created two subset splits, one for data from 2017, and one for data from 1970-1997.
 
 ```{r, include=F}
 # Take the most recent year, as well as all of the recent years
@@ -96,13 +149,73 @@ data_2017 <- data_clean %>% filter(iyear == 2017)
 data_1997 <- data_clean %>% filter(iyear >= 1997)
 ```
 
+Looking at the summary of the number of number of killed and wounded (respectively), we see that on avreage there are 2.192 killed and 3.408 wounded, but the medians are both 0. The maximum of these incidents were both the tragic attack on the World Trade Center on 9/11/2001. 
+
+```{r nkill nwound, echo = F}
+summary(data_clean$nkill)
+summary(data_clean$nwound)
+```
+
+Looking at the types of attacks, the top 5 weapons of choice range from explosives and firearms down to melee incidents. The most frequent 4 groups (the top factor was "Unknown") were Taliban, ISIL, Shining Path, and New People's Army.
+
+```{r}
+par(mfrow = c(1, 2))
+plot(sort(table(data_clean$weaptype1_txt), decreasing=TRUE)[1:5], main = "5 most frequent weapon types")
+plot(sort(table(data_clean$gname), decreasing=TRUE)[2:5], main="4 most frequent groups")
+```
+
+To view a geographical distribution of the incidents, we plot the total killed as a function of country location on a global map. We see that there is a large number of incidents in Iraq, as well as the South Asian region of Afghanistan, Pakistan, and India. Something worthy of noting is also the small, but still significant number of incidents in the USA, Western Europe, and South America.
+
+```{r world map count, echo = F, cache = TRUE}
+pacman::p_load(rworldmap)
+worldmap_data <- aggregate(success~country_txt,data_clean,length)
+
+#join data to a map
+map <- joinCountryData2Map(worldmap_data, 
+                               nameJoinColumn="country_txt", 
+                               joinCode="NAME")
+
+mapDevice() #create a world shaped window
+
+#plot the map
+mapCountryData(map, 
+                nameColumnToPlot='success', 
+               mapTitle = 'Total Incidents by Country (1970-2017)',
+                catMethod='fixedWidth', 
+                numCats=100)
+```
+
+A similar map to look at, the aggregate number of people killed by country, displays similar information. However, it is notable that in this chloropleth, the shade of some South Asian countries (notably India), as well as many countries in Western Europe and the USA, drop off significantly. This signifies that while there are a large number of incidents in these countries, either they do not end up being successful, or are stopped at the source quickly. This makes these countries worthy of further examination.
+
+```{r world map nkill, echo = F, cache = TRUE}
+worldmap_data2 <- aggregate(nkill~country_txt,data_clean,sum)
+
+#join data to a map
+map2 <- joinCountryData2Map(worldmap_data2, 
+                               nameJoinColumn="country_txt", 
+                               joinCode="NAME")
+
+mapDevice() #create a world shaped window
+
+#plot the map
+mapCountryData(map2, 
+                nameColumnToPlot='nkill', 
+               mapTitle = 'Total Killed People by Country (1970-2017)',
+                catMethod='fixedWidth', 
+                numCats=100)
+```
+
+Based on these maps, it makes sense to also subset out specific countries. Thus, we developed a subset for 1) Iraq, the country with by far the most incidents and total number killed, 2) the USA, given the fact that we are based in the USA and for the large number of unsuccessful or small incidents, 3) Japan, for being a country with a small number of incidents and number killed, and 4) Syria, for the recent developments of the Syrian Civil War. For larger context of countries that score high on the Human Development Index (HDI), we also subset off a developed countries dataset, consisting of those located in North America, Western Europe, and East Asia.
+
+Some final subsets that we created were for the target type, and the type of attack. Based on the target types, we created a subset for 1) attacks on police, 2) attacks on military, and 3) attacks on government agencies. Due to the armed nature of these bodies, it makes sense to branch these off to separate subsets to analyze if it results in a change in the number of successful attacks and killed people. Additionally, with a large number of predictors based on property damage and also for kidnappings / ransoms, we subset both of these into their own datasets for analysis.
+
 ```{r, include = F}
 # subsets
 data_usa <- data_clean %>% filter(country_txt == "United States")
 data_iraq <- data_clean %>% filter(country_txt == "Iraq")
 data_syria <- data_clean %>% filter(country_txt == "Syria")
-data_developed <- data_clean %>% filter(region_txt == "North America" | region_txt == "Western Europe" | region_txt == "East Asia")
 data_japan <- data_clean %>% filter(country_txt == "Japan")
+data_developed <- data_clean %>% filter(region_txt == "North America" | region_txt == "Western Europe" | region_txt == "East Asia")
 data_police <- data_clean %>% filter(targtype1_txt == 'Police')
 data_military <- data_clean %>% filter(targtype1_txt == 'Military')
 data_government <- data_clean %>% filter(targtype1_txt == "Government (General)" | targtype1_txt == "Government (Diplomatic)")
@@ -117,35 +230,26 @@ data_ransom <- data %>% select(-c(approxdate, resolution, location, summary, alt
 
 # remove text or IDs
 data_ransom <- data_ransom %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
-data_ransom <- data %>% filter(ransom == 1)
+data_ransom <- data_ransom %>% filter(ransom == 1)
+data_ransom <- data_ransom %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail, eventid, corp1, target1))
+data_ransom$vicinity[data_ransom$vicinity < 0] <- NA
+data_ransom$doubtterr[data_ransom$doubtterr < 0] <- NA
+data_ransom$ishostkid[data_ransom$ishostkid < 0] <- NA
+data_ransom <- na.omit(data_ransom)
 ```
 
-```{r}
-# hist(data$nkill)
-# hist(data$nwound)
-# summary(data$nkill)
-# summary(data$nwound)
-# summary(data$propcomment)
-
-# Notes: should we filter out nkill - nwound, propcomment stuff? predict on these?
-# eric: probably yes, can't really predict on propcomment with sentiment analysis. other two are pretty heavily skewed
-# maybe not do linear regression the first two, but maybe try RFs/tree for those two?
-# maybe remove eventid, corp1, target1, gname, weapdetail?
-# remove nperps, nperpcap, claimed, property, propvalue, nkillus, nkillter, nwoundus, nwoundte due to high number of observations missing?j
-```
-
-
+# Findings / Analysis
 
 ```{r, include=F}
 # removal of categorical columns with too many levels (to make usuable for linear regression and RF due to 53 categorical level limit for RFs)
 # also remove eventid
-data_omit_short <- data_omit %>% select(-c(eventid, country_txt, provstate, city, corp1, target1, gname, targsubtype1_txt, natlty1_txt))
+data_omit_short <- data_clean %>% select(-c(country_txt, provstate, city, gname, targsubtype1_txt, natlty1_txt))
 
 lm1 <- lm(data=data_omit_short, nkill~. )
 summary(lm1)
 
-glm1 <- glm(data=data_omit_short, success~. )
-summary(glm1)
+#glm1 <- glm(data=data_omit_short, success~. )
+#summary(glm1)
 ```
 
 
@@ -153,5 +257,39 @@ summary(glm1)
 # RF
 
 #lol doesn't run too large still
-rf1 <- randomForest(data=data_omit_short, success~., mtry=10, ntree=100)
+#rf1 <- randomForest(data=data_omit_short, success~., mtry=10, ntree=100)
+```
+
+# Future Work
+
+nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
+
+## Conclusion
+
+\newpage
+
+# Appendix
+
+## Works Cited
+[1] https://books.google.com/books?id=6qSjk2C9x6wC&pg=PA161#v=onepage&q&f=false
+[2] https://www.start.umd.edu/gtd/downloads/Codebook.pdf
+
+## Removed variables
+```{r}
+# filter data
+data_clean <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related, ishostkid)) 
+
+# remove text or IDs
+data_clean <- data_clean %>% select(-c(country, region, attacktype1, targtype1, targsubtype1, natlty1, claimmode, propextent, propcomment))
+
+# re-code -9 or -99 to NA
+data_clean <- data_clean %>% select(-c(nkillus, nkillter, nwoundus, nwoundte, nperps, nperpcap, claimed, claimmode_txt, property, propvalue, weapdetail, eventid, corp1, target1))
+data_clean$vicinity[data_clean$vicinity < 0] <- NA
+data_clean$doubtterr[data_clean$doubtterr < 0] <- NA
+data_clean <- na.omit(data_clean)
+```
+
+## Summary of cleaned data
+```{r, echo = F}
+summary(data_clean)
 ```
