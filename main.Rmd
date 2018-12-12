@@ -2,11 +2,7 @@
 title: "Predicting Outcome of Terrorist Attacks"
 author: "STAT 471/571/701 Modern Data Mining"
 date: "12/12/2018"
-graphics: yes
 output:
-  pdf_document:
-    toc: yes
-    toc_depth: '4'
   html_document:
     code_folding: show
     highlight: haddock
@@ -14,21 +10,25 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
   word_document:
     toc: yes
     toc_depth: '4'
-subtitle: STAT 471/571/701, Fall 2018
 header-includes:
 - \usepackage{fancyhdr}
 - \pagestyle{fancy}
 - \fancyfoot[CO,CE]{}
 - \fancyfoot[LE,RO]{\thepage}
+subtitle: STAT 471/571/701, Fall 2018
+graphics: yes
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.width = 7, fig.height = 4)
 if(!require("pacman")) install.packages("pacman")
-pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest)
+pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest, reshape)
 ```
 
 # Executive Summary
@@ -158,15 +158,15 @@ summary(data_clean$nwound)
 
 Looking at the types of attacks, the top 5 weapons of choice range from explosives and firearms down to melee incidents. The most frequent 4 groups (the top factor was "Unknown") were Taliban, ISIL, Shining Path, and New People's Army.
 
-```{r}
+```{r graphs, echo = F}
 par(mfrow = c(1, 2))
-plot(sort(table(data_clean$weaptype1_txt), decreasing=TRUE)[1:5], main = "5 most frequent weapon types")
-plot(sort(table(data_clean$gname), decreasing=TRUE)[2:5], main="4 most frequent groups")
+barplot(sort(table(data_clean$weaptype1_txt), decreasing=TRUE)[1:5], main = "5 most frequent weapon types")
+barplot(sort(table(data_clean$gname), decreasing=TRUE)[2:5], main="4 most frequent groups")
 ```
 
 To view a geographical distribution of the incidents, we plot the total killed as a function of country location on a global map. We see that there is a large number of incidents in Iraq, as well as the South Asian region of Afghanistan, Pakistan, and India. Something worthy of noting is also the small, but still significant number of incidents in the USA, Western Europe, and South America.
 
-```{r world map count, echo = F, cache = TRUE}
+```{r world map count, echo = F}
 pacman::p_load(rworldmap)
 worldmap_data <- aggregate(success~country_txt,data_clean,length)
 
@@ -187,7 +187,7 @@ mapCountryData(map,
 
 A similar map to look at, the aggregate number of people killed by country, displays similar information. However, it is notable that in this chloropleth, the shade of some South Asian countries (notably India), as well as many countries in Western Europe and the USA, drop off significantly. This signifies that while there are a large number of incidents in these countries, either they do not end up being successful, or are stopped at the source quickly. This makes these countries worthy of further examination.
 
-```{r world map nkill, echo = F, cache = TRUE}
+```{r world map nkill, echo = F}
 worldmap_data2 <- aggregate(nkill~country_txt,data_clean,sum)
 
 #join data to a map
@@ -236,6 +236,75 @@ data_ransom$vicinity[data_ransom$vicinity < 0] <- NA
 data_ransom$doubtterr[data_ransom$doubtterr < 0] <- NA
 data_ransom$ishostkid[data_ransom$ishostkid < 0] <- NA
 data_ransom <- na.omit(data_ransom)
+```
+
+Out of curiosity, we make a plot of total terrorist attacks by state in the USA. Note that there are a significant number of attacks in New York and California, but even populous states like Texas and Florida have a significantly less number of attacks. 
+
+```{r, echo = F}
+usa_map <- data_usa %>%
+  group_by(provstate) %>%
+  summarise(
+    nkill_total=sum(nkill),
+    n=n())
+
+usa_map <- usa_map[, c("provstate", "n")]
+usa_map <- usa_map[-c(1, 10, 41, 47), ]
+usa_map$center_lat  <- state.center$x
+usa_map$center_long <- state.center$y
+usa_map$region <- tolower(usa_map$provstate)
+usa_map$abb <- setNames(state.abb, state.name)[as.vector(usa_map$provstate)]
+states <- map_data("state") 
+map <- merge(states, usa_map, sort=FALSE, by="region", all.x=TRUE)
+map <- map[order(map$order),]
+ggplot(map, aes(x=long, y=lat, group=group))+
+  geom_polygon(aes(fill=n))+
+  geom_path()+ 
+  geom_text(data=usa_map, aes(x=center_lat, y=center_long, group=NA, 
+                             label=abb, size=2), show.legend =FALSE)+
+  scale_fill_continuous(limits=c(1, 550),name="Terrorist Attacks by State",
+                        low="light blue", high="dark blue")   # you may play the colors here
+```
+
+It is extremely interesting when plotting this in comparison to the number of deaths by state, as seen below. The number of deaths in California, as well as of any other state, are dwarfed by the number of deaths in the 9/11 attacks in New York. Looking at the actual dataframe, while California has 534 attacks, the most in the nation, it is surpassed by New York, Virginia, and Oklahoma in terms of number of deaths. This could be because many of the attempts are unsuccessful, or are stopped before they can worsen.
+
+```{r, echo = F}
+usa_map <- data_usa %>%
+  group_by(provstate) %>%
+  summarise(
+    nkill_total=sum(nkill),
+    n=n())
+
+usa_map <- usa_map[, c("provstate", "nkill_total")]
+usa_map <- usa_map[-c(1, 10, 41, 47), ]
+usa_map$center_lat  <- state.center$x
+usa_map$center_long <- state.center$y
+usa_map$region <- tolower(usa_map$provstate)
+usa_map$abb <- setNames(state.abb, state.name)[as.vector(usa_map$provstate)]
+states <- map_data("state") 
+map <- merge(states, usa_map, sort=FALSE, by="region", all.x=TRUE)
+map <- map[order(map$order),]
+ggplot(map, aes(x=long, y=lat, group=group))+
+  geom_polygon(aes(fill=nkill_total))+
+  geom_path()+ 
+  geom_text(data=usa_map, aes(x=center_lat, y=center_long, group=NA, 
+                             label=abb, size=2), show.legend =FALSE)+
+  scale_fill_continuous(limits=c(0, 3000),name="Number of Deaths by State",
+                        low="light blue", high="dark blue")   # you may play the colors here
+```
+
+Let's do a correlation heatmap for all the numeric values in the dataset. While all of these pairings do not make the most logical sense to correlate, it is good reaffirmation to see some of the values. There does not seem to be a correlation between the dates of the attacks, and latitude and longitude are very mildly, but significantly correlated. It is also good reaffirmation to see that the number of wounded and number of killed are highly correlated.
+```{r correlation, echo = F}
+plotData <-melt(cor(data_clean[sapply(data_clean, is.numeric)]))
+
+ggplot(plotData ,
+    aes(x = X1, y = X2, fill =value)) +
+    geom_tile() +
+    ylab("") +
+    xlab("") +
+scale_x_discrete(limits = rev(levels(plotData $X2))) + #Flip the x- or y-axis
+    scale_fill_gradient( low = "#56B1F7", high = "#132B43") +     #lightblue to darkblue
+    #scale_fill_gradient( low = "white", high = "black") + #white to black
+       guides(fill = guide_legend(title = "Correlation"))
 ```
 
 # Findings / Analysis
