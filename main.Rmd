@@ -326,7 +326,13 @@ scale_x_discrete(limits = rev(levels(plotData $X2))) + #Flip the x- or y-axis
 
 # Findings / Analysis
 
-Let us first take a look at the differences between countries, namely Iraq, Japan, USA, and the larger set of countries identified as developed. We will run Anova to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level
+## Entire Dataset Analysis
+
+## Data by Year
+
+## Data by Country
+
+Let us first take a look at the differences between countries, namely Iraq, Japan, USA, and the larger set of countries identified as developed. We will run Anova to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level.
 
 
 ```{r, include=F}
@@ -373,8 +379,13 @@ rf_japan <- randomForest(data=data_japan[,!(names(data_japan) %in% c('provstate'
 plot(rf_japan)
 ```
 
+## Data by Target
+
+## Data by Type
+
 # Future Work
 
+There are many aspects that can be focused on
 nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
 
 ## Conclusion
