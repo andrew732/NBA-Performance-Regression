@@ -3,6 +3,9 @@ title: "Predicting Outcome of Terrorist Attacks"
 author: "STAT 471/571/701 Modern Data Mining"
 date: "12/12/2018"
 output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
   html_document:
     code_folding: show
     highlight: haddock
@@ -10,9 +13,6 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
-  pdf_document:
-    toc: yes
-    toc_depth: '4'
   word_document:
     toc: yes
     toc_depth: '4'
@@ -309,6 +309,8 @@ scale_x_discrete(limits = rev(levels(plotData $X2))) + #Flip the x- or y-axis
 
 # Findings / Analysis
 
+## Entire Dataset Analysis
+
 ```{r, include=F}
 # removal of categorical columns with too many levels (to make usuable for linear regression and RF due to 53 categorical level limit for RFs)
 # also remove eventid
@@ -329,8 +331,17 @@ summary(lm1)
 #rf1 <- randomForest(data=data_omit_short, success~., mtry=10, ntree=100)
 ```
 
+## Data by Year
+
+## Data by Country
+
+## Data by Target
+
+## Data by Type
+
 # Future Work
 
+There are many aspects that can be focused on
 nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
 
 ## Conclusion
