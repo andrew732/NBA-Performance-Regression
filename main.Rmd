@@ -1,8 +1,11 @@
 ---
 title: "Predicting Outcome of Terrorist Attacks"
-author: "STAT 471/571/701 Modern Data Mining"
+author: "Andrew Huang and Eric Zeng"
 date: "12/12/2018"
 output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
   html_document:
     code_folding: show
     highlight: haddock
@@ -10,9 +13,6 @@ output:
     toc: yes
     toc_depth: 4
     toc_float: yes
-  pdf_document:
-    toc: yes
-    toc_depth: '4'
   word_document:
     toc: yes
     toc_depth: '4'
@@ -99,6 +99,7 @@ data_clean <- na.omit(data_clean)
 
 
 ```{r categorical, include = F, cache = TRUE}
+# make certain predictors factors
 data_clean$extended <- as.factor(data_clean$extended)
 data_clean$specificity <- as.factor(data_clean$specificity)
 data_clean$vicinity <- as.factor(data_clean$vicinity)
@@ -137,8 +138,10 @@ The years range from 1970 to 2017, with a huge left skew in data, meaning there 
 
 ```{r histogram, echo = F}
 par(mfrow = c(1, 2))
-hist(data_clean$iyear, main = "Histogram of incidents by year")
-plot(data_clean$success, main="Barplot of successful incidents")
+ggplot(data = data_clean, aes(x=iyear)) + geom_histogram(fill = 'orange', colour='blue') + labs(x='Year', y='Count', title='Histogram of Incidents by year')
+ggplot(data = data_clean, aes(x=success)) + geom_bar(fill = 'red') + labs(x='Success', y='Count', title='Barplot of successful incidents')
+# hist(data_clean$iyear, main = "Histogram of incidents by year")
+# plot(data_clean$success, main ="Barplot of successful incidents")
 ```
 
 From the histogram of incidents by year, it is clear that there is an influx of recent events, so it makes sense to generate a subset of data for recent events as well as those from past events. Thus, we created two subset splits, one for data from 2017, and one for data from 1970-1997.
@@ -160,6 +163,7 @@ Looking at the types of attacks, the top 5 weapons of choice range from explosiv
 
 ```{r graphs, echo = F}
 par(mfrow = c(1, 2))
+
 barplot(sort(table(data_clean$weaptype1_txt), decreasing=TRUE)[1:5], main = "5 most frequent weapon types")
 barplot(sort(table(data_clean$gname), decreasing=TRUE)[2:5], main="4 most frequent groups")
 ```
@@ -212,15 +216,28 @@ Some final subsets that we created were for the target type, and the type of att
 ```{r, include = F}
 # subsets
 data_usa <- data_clean %>% filter(country_txt == "United States")
+data_usa <- data_usa[, sapply(data_usa, function(c) length(unique(c))) > 1]
+
 data_iraq <- data_clean %>% filter(country_txt == "Iraq")
+data_iraq <- data_iraq[, sapply(data_iraq, function(c) length(unique(c))) > 1]
+
 data_syria <- data_clean %>% filter(country_txt == "Syria")
+data_syria <- data_syria[, sapply(data_syria, function(c) length(unique(c))) > 1]
+
 data_japan <- data_clean %>% filter(country_txt == "Japan")
+data_japan <- data_japan[, sapply(data_japan, function(c) length(unique(c))) > 1]
+
 data_developed <- data_clean %>% filter(region_txt == "North America" | region_txt == "Western Europe" | region_txt == "East Asia")
-data_police <- data_clean %>% filter(targtype1_txt == 'Police')
-data_military <- data_clean %>% filter(targtype1_txt == 'Military')
+
+data_police <- data_clean %>% filter(targtype1_txt == 'Police') %>% select(-targtype1_txt)
+
+data_military <- data_clean %>% filter(targtype1_txt == 'Military') %>% select(-targtype1_txt)
+
 data_government <- data_clean %>% filter(targtype1_txt == "Government (General)" | targtype1_txt == "Government (Diplomatic)")
+
 data_property <- data_clean %>% filter(propextent_txt != "")
 ```
+
 
 ```{r, include = F}
 # Subsets that require further cleaning!
@@ -309,24 +326,51 @@ scale_x_discrete(limits = rev(levels(plotData $X2))) + #Flip the x- or y-axis
 
 # Findings / Analysis
 
+Let us first take a look at the differences between countries, namely Iraq, Japan, USA, and the larger set of countries identified as developed. We will run Anova to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level
+
+
 ```{r, include=F}
 # removal of categorical columns with too many levels (to make usuable for linear regression and RF due to 53 categorical level limit for RFs)
 # also remove eventid
-data_omit_short <- data_clean %>% select(-c(country_txt, provstate, city, gname, targsubtype1_txt, natlty1_txt))
+# data_omit_short <- data_clean %>% select(-c(country_txt, provstate, city, gname, targsubtype1_txt, natlty1_txt))
 
-lm1 <- lm(data=data_omit_short, nkill~. )
-summary(lm1)
+lm_japan <- lm(data=data_japan, nkill~.-nwound ) 
+summary(lm_japan)
+```
 
-#glm1 <- glm(data=data_omit_short, success~. )
-#summary(glm1)
+```{r, include=F}
+alpha = 0.01
+lm1_japan_anova <- Anova(lm_japan)
+lm1_japan_anova <- lm1_japan_anova[!is.na(lm1_japan_anova[,4]),]
+while (TRUE) {
+  if (max(lm1_japan_anova[,4]) > alpha) {
+    lm1_japan_anova <- lm1_japan_anova[-which.max(lm1_japan_anova[,4]),]
+  } else {
+    break
+  }
+}
+
+lm1_japan_anova
+
+```
+
+Now we rerun the linear model with the significant varibles displayed by Anova.
+
+```{r, include= F}
+input <- as.formula(paste('nkill ~', paste(rownames(lm1_japan_anova), collapse = ' + ')))
+
+lm_japan <- lm(input, data=data_japan)
+
+summary(lm_japan)
 ```
 
 
 ```{r, include=F}
-# RF
-
+# rf_japan
+set.seed(1)
 #lol doesn't run too large still
-#rf1 <- randomForest(data=data_omit_short, success~., mtry=10, ntree=100)
+rf_japan <- randomForest(data=data_japan[,!(names(data_japan) %in% c('provstate', 'city', 'targsubtype1_txt', 'natlty1_txt', 'gname'))], nkill~., mtry=8, ntree=150)
+plot(rf_japan)
 ```
 
 # Future Work
