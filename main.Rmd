@@ -324,24 +324,55 @@ scale_x_discrete(limits = rev(levels(plotData $X2))) + #Flip the x- or y-axis
        guides(fill = guide_legend(title = "Correlation"))
 ```
 
+
+
+
+
 # Findings / Analysis
 
 ## Entire Dataset Analysis
+
+We will start with the whole dataset `data_clean` and by training a classifier on `success` starting with a logistic regression model
+
+```{r entire set, eval=F, include=F}
+glm_clean <- glm(success~. -country_txt -provstate -city -targsubtype1_txt -gname -natlty1_txt, data_clean, family='binomial')
+summary(glm_clean)
+Anova(glm_clean)
+```
+
+```{r, eval=F, echo=F}
+set.seed(1)
+Y <- data_clean[,'success']
+X <- model.matrix(data=data_clean, success~. -country_txt - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_clean <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+plot(lasso_clean)
+
+lasso_clean_min <- coef(lasso_clean, s='lambda.min')
+lasso_clean_min <- lasso_clean_min[which(lasso_clean_min != 0),]
+input <- rownames(as.matrix(lasso_clean_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+# input <- as.formula('nkill ~ success + attacktype1_txt + targtype1_txt + weaptype1_txt')
+# 
+# lasso_clean <- lm(input, data=data_clean)
+```
 
 ## Data by Year
 
 ## Data by Country
 
-Let us first take a look at the differences between countries, namely Iraq, Japan, USA, and the larger set of countries identified as developed. We will run Anova to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level.
+Let us take a look at the differences between countries, namely Iraq, Japan, USA, and the larger set of countries identified as developed. We will build a linear regression model and run Anova() to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level.
 
+Starting with Japan, we first remove `nwound` before modling building as it would be highly correlated with `nikill`. In reality, we can't really use `nwound` to predict `nkill` as they occur at the same time (it makes sense that more wounded implies more killed, and vice versa). We are interested in deeper relations, if they exist. The summaries can be found in the appendix.
 
-```{r, include=F}
+```{r japan, include=F}
 # removal of categorical columns with too many levels (to make usuable for linear regression and RF due to 53 categorical level limit for RFs)
 # also remove eventid
 # data_omit_short <- data_clean %>% select(-c(country_txt, provstate, city, gname, targsubtype1_txt, natlty1_txt))
 
 lm_japan <- lm(data=data_japan, nkill~.-nwound ) 
-summary(lm_japan)
 ```
 
 ```{r, include=F}
@@ -360,24 +391,240 @@ lm1_japan_anova
 
 ```
 
-Now we rerun the linear model with the significant varibles displayed by Anova.
-
 ```{r, include= F}
 input <- as.formula(paste('nkill ~', paste(rownames(lm1_japan_anova), collapse = ' + ')))
 
 lm_japan <- lm(input, data=data_japan)
-
-summary(lm_japan)
 ```
 
+Adjusted R-Squared for Japan: `r summary(lm_japan)$adj.r.squared`
 
-```{r, include=F}
+RSE for Japan: `r summary(lm_japan)$sigma`
+
+
+Our backwards selected model is still very large (`r nrow(coef(summary(lm_japan)))` predictors still remain). Let us try LASSO (cross-validated) to see if we can reduce the complexity of our model. Below is our graph of cross-validated mean errors. Our final model's code is shown in the appendix.
+
+```{r, include=T, echo=F}
+set.seed(1)
+Y <- data_japan[,'nkill']
+X <- model.matrix(data=data_japan, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_japan <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_japan_plot <- lasso_japan
+plot(lasso_japan_plot)
+
+lasso_japan_min <- coef(lasso_japan, s='lambda.min')
+lasso_japan_min <- lasso_japan_min[which(lasso_japan_min != 0),]
+input <- rownames(as.matrix(lasso_japan_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ success + attacktype1_txt + targtype1_txt + weaptype1_txt')
+
+lasso_japan <- lm(input, data=data_japan)
+```
+
+Adjusted R-Squared for Japan (LASSO): `r summary(lasso_japan)$adj.r.squared`
+
+RSE for Japan (LASSO): `r summary(lasso_japan)$sigma`
+
+Let us also try running random forest model on this datset. We must remove  `provstate`, `city`, `targsubtype_txt`, `natlty1_txt`, and `gname` as they have oveer 53 predictors. We tuned our random forest appropriatly with `mtry` and `ntree`. Displayed is the MSE of our RF:
+
+```{r, include=T, echo=F}
 # rf_japan
 set.seed(1)
 #lol doesn't run too large still
-rf_japan <- randomForest(data=data_japan[,!(names(data_japan) %in% c('provstate', 'city', 'targsubtype1_txt', 'natlty1_txt', 'gname'))], nkill~., mtry=8, ntree=150)
-plot(rf_japan)
+rf_japan <- randomForest(data=data_japan, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=8, ntree=150)
+ggplot() + geom_line(aes(x=1:rf_japan$ntree, y=rf_japan$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_japan on nkill')
 ```
+
+MSE at 150 trees: `r rf_japan$mse[150]`
+
+The samme approaches were applied the USA, Syria, and Iraq dataset. Their outputs are shown in the appendix and the overall summaries are:
+
+```{r usa, include=F}
+lm_usa <- lm(data=data_usa, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname) 
+alpha = 0.01
+lm1_usa_anova <- Anova(lm_usa)
+lm1_usa_anova <- lm1_usa_anova[!is.na(lm1_usa_anova[,4]),]
+while (TRUE) {
+  if (max(lm1_usa_anova[,4]) > alpha) {
+    lm1_usa_anova <- lm1_usa_anova[-which.max(lm1_usa_anova[,4]),]
+  } else {
+    break
+  }
+}
+
+lm1_usa_anova
+
+```
+
+```{r, include= F}
+input <- as.formula(paste('nkill ~', paste(rownames(lm1_usa_anova), collapse = ' + ')))
+
+lm_usa <- lm(input, data=data_usa)
+```
+
+Adjusted R-Squared for usa: `r summary(lm_usa)$adj.r.squared`
+
+RSE for usa: `r summary(lm_usa)$sigma`
+
+```{r, include=F}
+set.seed(1)
+Y <- data_usa[,'nkill']
+X <- model.matrix(data=data_usa, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_usa <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_usa_plot <- lasso_usa
+
+lasso_usa_min <- coef(lasso_usa, s='lambda.min')
+lasso_usa_min <- lasso_usa_min[which(lasso_usa_min != 0),]
+input <- rownames(as.matrix(lasso_usa_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ vicinity + propextent_txt')
+
+lasso_usa <- lm(input, data=data_usa)
+```
+
+Adjusted R-Squared for usa (LASSO): `r summary(lasso_usa)$adj.r.squared`
+
+RSE for usa (LASSO): `r summary(lasso_usa)$sigma`
+
+```{r, include=F}
+# rf_usa
+set.seed(1)
+#lol doesn't run too large still
+rf_usa <- randomForest(data=data_usa, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=8, ntree=150)
+ggplot() + geom_line(aes(x=1:rf_usa$ntree, y=rf_usa$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_usa on nkill')
+```
+
+MSE at 150 trees: `r rf_usa$mse[150]`
+
+
+```{r syria, include=F}
+lm_syria <- lm(data=data_syria, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname) 
+alpha = 0.01
+lm1_syria_anova <- Anova(lm_syria)
+lm1_syria_anova <- lm1_syria_anova[!is.na(lm1_syria_anova[,4]),]
+while (TRUE) {
+  if (max(lm1_syria_anova[,4]) > alpha) {
+    lm1_syria_anova <- lm1_syria_anova[-which.max(lm1_syria_anova[,4]),]
+  } else {
+    break
+  }
+}
+
+lm1_syria_anova
+
+```
+
+```{r, include= F}
+input <- as.formula(paste('nkill ~', paste(rownames(lm1_syria_anova), collapse = ' + ')))
+
+lm_syria <- lm(input, data=data_syria)
+```
+
+Adjusted R-Squared for syria: `r summary(lm_syria)$adj.r.squared`
+
+RSE for syria: `r summary(lm_syria)$sigma`
+
+```{r, include=F}
+set.seed(1)
+Y <- data_syria[,'nkill']
+X <- model.matrix(data=data_syria, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_syria <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_syria_plot <- lasso_syria
+
+lasso_syria_min <- coef(lasso_syria, s='lambda.min')
+lasso_syria_min <- lasso_syria_min[which(lasso_syria_min != 0),]
+input <- rownames(as.matrix(lasso_syria_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ iyear + imonth + extended + longitude + specificity + crit1 + crit2 + crit3 + doubtterr + success + suicide + attacktype1_txt + targtype1_txt + weapsubtype1_txt + propextent_txt')
+
+lasso_syria <- lm(input, data=data_syria)
+```
+
+Adjusted R-Squared for syria (LASSO): `r summary(lasso_syria)$adj.r.squared`
+
+RSE for syria (LASSO): `r summary(lasso_syria)$sigma`
+
+```{r, include=F}
+# rf_syria
+set.seed(1)
+#lol doesn't run too large still
+rf_syria <- randomForest(data=data_syria, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=8, ntree=150)
+ggplot() + geom_line(aes(x=1:rf_syria$ntree, y=rf_syria$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_syria on nkill')
+```
+
+MSE at 150 trees: `r rf_syria$mse[150]`
+
+
+```{r iraq, include=F}
+lm_iraq <- lm(data=data_iraq, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname) 
+alpha = 0.01
+lm1_iraq_anova <- Anova(lm_iraq)
+lm1_iraq_anova <- lm1_iraq_anova[!is.na(lm1_iraq_anova[,4]),]
+while (TRUE) {
+  if (max(lm1_iraq_anova[,4]) > alpha) {
+    lm1_iraq_anova <- lm1_iraq_anova[-which.max(lm1_iraq_anova[,4]),]
+  } else {
+    break
+  }
+}
+
+lm1_iraq_anova
+
+```
+
+```{r, include= F}
+input <- as.formula(paste('nkill ~', paste(rownames(lm1_iraq_anova), collapse = ' + ')))
+
+lm_iraq <- lm(input, data=data_iraq)
+```
+
+Adjusted R-Squared for iraq: `r summary(lm_iraq)$adj.r.squared`
+
+RSE for iraq: `r summary(lm_iraq)$sigma`
+
+```{r, include=F}
+set.seed(1)
+Y <- data_iraq[,'nkill']
+X <- model.matrix(data=data_iraq, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_iraq <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_iraq_plot <- lasso_iraq
+
+lasso_iraq_min <- coef(lasso_iraq, s='lambda.min')
+lasso_iraq_min <- lasso_iraq_min[which(lasso_iraq_min != 0),]
+input <- rownames(as.matrix(lasso_iraq_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ iyear + imonth + iday + extended + latitude + longitude + specificity + crit1 + crit2 + doubtterr + multiple + success + suicide + attacktype1_txt + targtype1_txt + guncertain1 + + weapsubtype1_txt + propextent_txt')
+
+lasso_iraq <- lm(input, data=data_iraq)
+```
+
+Adjusted R-Squared for iraq (LASSO): `r summary(lasso_iraq)$adj.r.squared`
+
+RSE for iraq (LASSO): `r summary(lasso_iraq)$sigma`
+
+```{r, include=F}
+# rf_iraq
+set.seed(1)
+#lol doesn't run too large still
+rf_iraq <- randomForest(data=data_iraq, nkill~.- nwound - provstate - city - targsubtype1_txt - weapsubtype1_txt - natlty1_txt - gname, mtry=3, ntree=50)
+ggplot() + geom_line(aes(x=1:rf_iraq$ntree, y=rf_iraq$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_iraq on nkill')
+```
+
+MSE at 150 trees: `r rf_iraq$mse[150]`
+
+
 
 ## Data by Target
 
@@ -399,7 +646,7 @@ nperps would be nice to use, but it is also quite sparse for some reason, we can
 [2] https://www.start.umd.edu/gtd/downloads/Codebook.pdf
 
 ## Removed variables
-```{r}
+```{r removed variables}
 # filter data
 data_clean <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related, ishostkid)) 
 
@@ -417,3 +664,39 @@ data_clean <- na.omit(data_clean)
 ```{r, echo = F}
 summary(data_clean)
 ```
+
+
+
+## Data by Country
+
+Japan Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(lm1_japan_anova)
+plot(lasso_japan_plot)
+ggplot() + geom_line(aes(x=1:rf_japan$ntree, y=rf_japan$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_japan on nkill')
+```
+
+
+USA Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(lm1_usa_anova)
+plot(lasso_usa_plot)
+ggplot() + geom_line(aes(x=1:rf_usa$ntree, y=rf_usa$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_usa on nkill')
+```
+
+
+Syria Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(lm1_syria_anova)
+plot(lasso_syria_plot)
+ggplot() + geom_line(aes(x=1:rf_syria$ntree, y=rf_syria$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_syria on nkill')
+```
+
+
+Iraq Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(lm1_iraq_anova)
+plot(lasso_iraq_plot)
+ggplot() + geom_line(aes(x=1:rf_iraq$ntree, y=rf_iraq$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_iraq on nkill')
+```
+
