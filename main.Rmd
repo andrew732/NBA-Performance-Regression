@@ -28,7 +28,7 @@ graphics: yes
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.width = 7, fig.height = 4)
 if(!require("pacman")) install.packages("pacman")
-pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest, reshape)
+pacman::p_load(dplyr, ggplot2, glmnet, car, randomForest, reshape, gridExtra, forcats)
 ```
 
 # Executive Summary
@@ -114,6 +114,7 @@ data_clean$guncertain1 <- as.factor(data_clean$guncertain1)
 data_clean$individual <- as.factor(data_clean$individual)
 ```
 
+
 First, we read in the data given in csv format. There are 181,691 observations and 135 total variables. However, this must be futher cleaned. There were three main steps in the data cleaning process for eliminating variables:
 
 1) There were many variables for multiple groups; for instance, there are 3 groups for target (target1, targettype1, targetsubtype1, corp1, target1, natlty1, etc.), 3 groups for attack type, 3 groups for claim, and 3 groups for weapon types. These are present in the case that multiple groups stage an attack, or multiple targets are targeted. However, for the most parts of the dataset, the second and third group for most predictors were NA, and thus were dropped.
@@ -144,12 +145,12 @@ ggplot(data = data_clean, aes(x=success)) + geom_bar(fill = 'red') + labs(x='Suc
 # plot(data_clean$success, main ="Barplot of successful incidents")
 ```
 
-From the histogram of incidents by year, it is clear that there is an influx of recent events, so it makes sense to generate a subset of data for recent events as well as those from past events. Thus, we created two subset splits, one for data from 2017, and one for data from 1970-1997.
+From the histogram of incidents by year, it is clear that there is an influx of recent events, so it makes sense to generate a subset of data for recent events as well as those from past events. Thus, we created two subset splits, one for data from 2017, and one for data from 1997-2016. We choose the range 1997-2016 because before 1997, our GTD is quite space for some variables. This ensures we still have comparable datasets with similar sparsity.
 
 ```{r, include=F}
 # Take the most recent year, as well as all of the recent years
 data_2017 <- data_clean %>% filter(iyear == 2017)
-data_1997 <- data_clean %>% filter(iyear >= 1997)
+data_1997 <- data_clean %>% filter(iyear >= 1997 & iyear <= 2016)
 ```
 
 Looking at the summary of the number of number of killed and wounded (respectively), we see that on avreage there are 2.192 killed and 3.408 wounded, but the medians are both 0. The maximum of these incidents were both the tragic attack on the World Trade Center on 9/11/2001. 
@@ -211,7 +212,7 @@ mapCountryData(map2,
 
 Based on these maps, it makes sense to also subset out specific countries. Thus, we developed a subset for 1) Iraq, the country with by far the most incidents and total number killed, 2) the USA, given the fact that we are based in the USA and for the large number of unsuccessful or small incidents, 3) Japan, for being a country with a small number of incidents and number killed, and 4) Syria, for the recent developments of the Syrian Civil War. For larger context of countries that score high on the Human Development Index (HDI), we also subset off a developed countries dataset, consisting of those located in North America, Western Europe, and East Asia.
 
-Some final subsets that we created were for the target type, and the type of attack. Based on the target types, we created a subset for 1) attacks on police, 2) attacks on military, and 3) attacks on government agencies. Due to the armed nature of these bodies, it makes sense to branch these off to separate subsets to analyze if it results in a change in the number of successful attacks and killed people. Additionally, with a large number of predictors based on property damage and also for kidnappings / ransoms, we subset both of these into their own datasets for analysis.
+Some final subsets that we created were for the target type, and the type of attack. Based on the target types, we created a subset for 1) attacks on police, 2) attacks on military, and 3) attacks on police agencies. Due to the armed nature of these bodies, it makes sense to branch these off to separate subsets to analyze if it results in a change in the number of successful attacks and killed people. Additionally, with a large number of predictors based on property damage and also for kidnappings / ransoms, we subset both of these into their own datasets for analysis.
 
 ```{r, include = F}
 # subsets
@@ -228,14 +229,20 @@ data_japan <- data_clean %>% filter(country_txt == "Japan")
 data_japan <- data_japan[, sapply(data_japan, function(c) length(unique(c))) > 1]
 
 data_developed <- data_clean %>% filter(region_txt == "North America" | region_txt == "Western Europe" | region_txt == "East Asia")
+data_developed <- data_developed[, sapply(data_developed, function(c) length(unique(c))) > 1]
 
-data_police <- data_clean %>% filter(targtype1_txt == 'Police') %>% select(-targtype1_txt)
+data_police <- data_clean %>% filter(targtype1_txt == 'Police') 
+data_police <- data_police[, sapply(data_police, function(c) length(unique(c))) > 1]
 
-data_military <- data_clean %>% filter(targtype1_txt == 'Military') %>% select(-targtype1_txt)
+data_military <- data_clean %>% filter(targtype1_txt == 'Military')
+data_military <- data_military[, sapply(data_military, function(c) length(unique(c))) > 1]
 
 data_government <- data_clean %>% filter(targtype1_txt == "Government (General)" | targtype1_txt == "Government (Diplomatic)")
+data_government <- data_government[, sapply(data_government, function(c) length(unique(c))) > 1]
 
 data_property <- data_clean %>% filter(propextent_txt != "")
+data_property <- data_property[, sapply(data_property, function(c) length(unique(c))) > 1]
+
 ```
 
 
@@ -324,64 +331,567 @@ scale_x_discrete(limits = rev(levels(plotData $X2))) + #Flip the x- or y-axis
        guides(fill = guide_legend(title = "Correlation"))
 ```
 
+
+
+Before we go onto the analysis, we will collapse all factor levels into the top 5 + an other category to improve the runtime of our code for dataset we are predicting on `success`. If we were to include all 3537 levels of variables like `gname`, then our classification models would take too long to train. See the appendix for the code to collapse factors with many levels.
+
+```{r collapse levels, include=F, cache=TRUE}
+collapse <- function(d, type=''){
+  tgt_cols <- colnames(d)[sapply(d, function(x) length(levels(x))) > 6]
+  
+  for (col in tgt_cols) {
+    if (col != type) {
+      sorted <- sort(table(d[,col]), decreasing=TRUE)
+      top5 <- sorted[1:5]
+      if ('Unknown' %in% names(top5)) {
+        top5[names(sorted[6])] <- sorted[[6]]
+      }
+    
+      d[,col] <- fct_collapse(d[,col], 'Unknown' = levels(d[,col])[!(levels(d[,col]) %in% names(top5))])
+    }
+  }
+}
+```
+
+```{r, include = F}
+# subsets
+data_developed <- data_clean %>% filter(region_txt == "North America" | region_txt == "Western Europe" | region_txt == "East Asia")
+collapse(data_developed, type='region_txt')
+data_developed <- data_developed[, sapply(data_developed, function(c) length(unique(c))) > 1]
+
+data_police <- data_clean %>% filter(targtype1_txt == 'Police') 
+collapse(data_police, type='targtype1_txt')
+data_police <- data_police[, sapply(data_police, function(c) length(unique(c))) > 1]
+
+data_military <- data_clean %>% filter(targtype1_txt == 'Military')
+collapse(data_military, type='targtype1_txt')
+data_military <- data_military[, sapply(data_military, function(c) length(unique(c))) > 1]
+
+data_government <- data_clean %>% filter(targtype1_txt == "Government (General)" | targtype1_txt == "Government (Diplomatic)")
+collapse(data_government, type='targtype1_txt')
+data_government <- data_government[, sapply(data_government, function(c) length(unique(c))) > 1]
+
+data_property <- data_clean %>% filter(propextent_txt != "")
+collapse(data_property, type='propextent_txt')
+data_property <- data_property[, sapply(data_property, function(c) length(unique(c))) > 1]
+
+```
+
+
+
+
+
+
+
+
+
 # Findings / Analysis
 
 ## Entire Dataset Analysis
 
-## Data by Year
+We will start with the whole dataset `data_clean` and by training a classifier on `nkill` with a logistic classifier. We will run cv.glm with $\alpha=1$ to run LASSO regression for model selection. Once we take the smallest model at most 1 std deviation of cross-validated mean errors away from the minimum cvm, we will run Anova() iteratively to remove the most insginficant grouping untill all predictors are significant at the $\alpha=0.01$ level.
 
-## Data by Country
+Note that for this specific subset of the data, we will use `lambda.min` instead of `lambda.1se` as `lambda.1se` implies a model with 0 nonzero coefficeints (essentially, just an intercept). Thus for feasibility, we will use `lambda.min`.
 
-Let us first take a look at the differences between countries, namely Iraq, Japan, USA, and the larger set of countries identified as developed. We will run Anova to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level.
+```{r, entire set, echo=F, cache=TRUE}
+set.seed(1)
+Y <- data_clean[,'nkill']
+X <- model.matrix(data=data_clean, nkill~. -nwound -country_txt - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
 
+lasso_clean <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+plot(lasso_clean)
 
-```{r, include=F}
-# removal of categorical columns with too many levels (to make usuable for linear regression and RF due to 53 categorical level limit for RFs)
-# also remove eventid
-# data_omit_short <- data_clean %>% select(-c(country_txt, provstate, city, gname, targsubtype1_txt, natlty1_txt))
+lasso_clean_min <- coef(lasso_clean, s='lambda.min')
+lasso_clean_min <- lasso_clean_min[which(lasso_clean_min != 0),]
+input <- rownames(as.matrix(lasso_clean_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ iyear + extended + region_txt + latitude + specificity + vicinity + crit1 + crit2 + crit3 + doubtterr + multiple + success + suicide + attacktype1_txt + targtype1_txt + guncertain1 + individual + weaptype1_txt + weapsubtype1_txt + propextent_txt')
 
-lm_japan <- lm(data=data_japan, nkill~.-nwound ) 
-summary(lm_japan)
+lasso_clean <- lm(input, data=data_clean)
 ```
 
-```{r, include=F}
+TODO
+
+
+## Data by Year
+
+Now let us move toward examining smaller, more specific datasets. We will start with looking at the 2017 vs 1997-2016 data to see how terrorism now compares to the past. We will be predicting on success as to discover what variables affect successful terrorism in different time periods. We will use LASSO+Anova() as before.
+
+Data in 2017:
+```{r y2017 lasso, echo=F, cache=TRUE}
+set.seed(1)
+Y <- data_2017[,'success']
+X <- model.matrix(data=data_2017, success~. -country_txt - provstate - city - targsubtype1_txt - weapsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_y2017 <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+lasso_y2017_plot <- lasso_y2017
+
+lasso_y2017_min <- coef(lasso_y2017, s='lambda.1se')
+lasso_y2017_min <- lasso_y2017_min[which(lasso_y2017_min != 0),]
+input <- rownames(as.matrix(lasso_y2017_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('success ~ iday + extended + region_txt + latitude + longitude + specificity + vicinity + crit1 + crit3 + multiple + suicide + attacktype1_txt + targtype1_txt + weaptype1_txt + guncertain1 + weapsubtype1_txt + nkill + nwound + propextent_txt')
+
+suppressWarnings(lasso_y2017 <- glm(input, data=data_2017, family = 'binomial'))
+```
+
+```{r y2017 anova, include = F, warn = F, cache=TRUE}
+suppressWarnings(y2017_anova <- Anova(lasso_y2017))
+y2017_anova <- y2017_anova[!is.na(y2017_anova[,3]),]
 alpha = 0.01
-lm1_japan_anova <- Anova(lm_japan)
-lm1_japan_anova <- lm1_japan_anova[!is.na(lm1_japan_anova[,4]),]
 while (TRUE) {
-  if (max(lm1_japan_anova[,4]) > alpha) {
-    lm1_japan_anova <- lm1_japan_anova[-which.max(lm1_japan_anova[,4]),]
+  if (max(y2017_anova[,3]) > alpha) {
+    target <- rownames(y2017_anova[which.max(y2017_anova[,3]),]) 
+    print(target)
+    suppressWarnings(lasso_y2017 <- update(lasso_y2017, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(y2017_anova <- Anova(lasso_y2017))
+    y2017_anova <- y2017_anova[!is.na(y2017_anova[,3]),]
   } else {
     break
   }
 }
-
-lm1_japan_anova
-
-```
-
-Now we rerun the linear model with the significant varibles displayed by Anova.
-
-```{r, include= F}
-input <- as.formula(paste('nkill ~', paste(rownames(lm1_japan_anova), collapse = ' + ')))
-
-lm_japan <- lm(input, data=data_japan)
-
-summary(lm_japan)
 ```
 
 
-```{r, include=F}
+Data from 1997-2016:
+```{r y1997 lasso, echo=F, cache=TRUE, eval=F}
+set.seed(1)
+Y <- data_1997[,'success']
+X <- model.matrix(data=data_1997, success~. -country_txt - provstate - city - targsubtype1_txt - weapsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_y1997 <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+lasso_y1997_plot <- lasso_y1997
+
+lasso_y1997_min <- coef(lasso_y1997, s='lambda.1se')
+lasso_y1997_min <- lasso_y1997_min[which(lasso_y1997_min != 0),]
+input <- rownames(as.matrix(lasso_y1997_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('success ~ iday + imonth + iday + extended + region_txt + latitude + longitude + specificity + vicinity + crit1 + crit2 + crit3 + doubtterr + multiple + suicide + attacktype1_txt + targtype1_txt + weaptype1_txt + nkill + nwound + propextent_txt')
+
+suppressWarnings(lasso_y1997 <- glm(input, data=data_1997, family = 'binomial'))
+```
+
+```{r y1997 anova, include = F, warn = F, cache=TRUE, eval=F}
+suppressWarnings(y1997_anova <- Anova(lasso_y1997))
+y1997_anova <- y1997_anova[!is.na(y1997_anova[,3]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(y1997_anova[,3]) > alpha) {
+    target <- rownames(y1997_anova[which.max(y1997_anova[,3]),]) 
+    print(target)
+    suppressWarnings(lasso_y1997 <- update(lasso_y1997, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(y1997_anova <- Anova(lasso_y1997))
+    y1997_anova <- y1997_anova[!is.na(y1997_anova[,3]),]
+  } else {
+    break
+  }
+}
+```
+
+
+
+```{r year table, echo=F, eval=F}
+year_table <- data.frame('Residual Deviance' = c(summary(lasso_y2017)$deviance, summary(lasso_y1997)$deviance))
+rownames(year_table) <- c('2017', '1997-2016')
+grid.table(year_table)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+## Data by Country
+
+Let us take a look at the differences between countries, namely Iraq, Japan, USA, and Syria. We will build a linear regression model through LASSO (cvglm) and run Anova() to remove (backward select out) categories that are not significant at the $\alpha=0.01$ level.
+
+Starting with Japan, we first remove `nwound` before modeling building as it would be highly correlated with `nikill`. In reality, we can't really use `nwound` to predict `nkill` as they occur at the same time (it makes sense that more wounded implies more killed, and vice versa). We are interested in deeper relations, if they exist. The summaries can be found in the appendix.
+
+Below is our graph of cross-validated mean errors.
+
+```{r japan lasso, include=T, echo=F, cache=T}
+set.seed(1)
+Y <- data_japan[,'nkill']
+X <- model.matrix(data=data_japan, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_japan <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_japan_plot <- lasso_japan
+plot(lasso_japan_plot)
+
+lasso_japan_min <- coef(lasso_japan, s='lambda.min')
+lasso_japan_min <- lasso_japan_min[which(lasso_japan_min != 0),]
+input <- rownames(as.matrix(lasso_japan_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ success + attacktype1_txt + targtype1_txt + weaptype1_txt')
+
+lasso_japan <- lm(input, data=data_japan)
+```
+
+```{r japan lasso anova, include=F, cache=T}
+japan_anova <- Anova(lasso_japan)
+japan_anova <- japan_anova[!is.na(japan_anova[,4]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(japan_anova[,4]) > alpha) {
+    target <- rownames(japan_anova[which.max(japan_anova[,4]),]) 
+    print(target)
+    lasso_japan <- update(lasso_japan, as.formula(paste('.~.', ' - ', target)))
+    japan_anova <- Anova(lasso_japan)
+    japan_anova <- japan_anova[!is.na(japan_anova[,4]),]
+  } else {
+    break
+  }
+}
+```
+
+Adjusted R-Squared for Japan (LASSO): `r summary(lasso_japan)$adj.r.squared`
+
+RSE for Japan (LASSO): `r summary(lasso_japan)$sigma`
+
+Let us also try running random forest model on this datset. We must remove  `provstate`, `city`, `targsubtype_txt`, `natlty1_txt`, and `gname` as they have oveer 53 levels. We tuned our random forest appropriatly with `mtry` and `ntree`. Displayed is the MSE of our RF:
+
+```{r japan rf, include=T, echo=F, cache=T}
 # rf_japan
 set.seed(1)
 #lol doesn't run too large still
-rf_japan <- randomForest(data=data_japan[,!(names(data_japan) %in% c('provstate', 'city', 'targsubtype1_txt', 'natlty1_txt', 'gname'))], nkill~., mtry=8, ntree=150)
-plot(rf_japan)
+rf_japan <- randomForest(data=data_japan, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=8, ntree=150)
+ggplot() + geom_line(aes(x=1:rf_japan$ntree, y=rf_japan$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_japan on nkill')
 ```
+
+MSE at 150 trees: `r rf_japan$mse[150]`
+
+
+
+
+The same approaches were applied the USA, Syria, and Iraq. Their outputs are shown in the appendix and the overall summaries are:
+
+```{r usa lasso, include=F, cache=T}
+set.seed(1)
+Y <- data_usa[,'nkill']
+X <- model.matrix(data=data_usa, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_usa <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_usa_plot <- lasso_usa
+
+lasso_usa_min <- coef(lasso_usa, s='lambda.min')
+lasso_usa_min <- lasso_usa_min[which(lasso_usa_min != 0),]
+input <- rownames(as.matrix(lasso_usa_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ vicinity + propextent_txt')
+
+lasso_usa <- lm(input, data=data_usa)
+```
+
+```{r usa lasso anova, include=F, cache=T}
+usa_anova <- Anova(lasso_usa)
+usa_anova <- usa_anova[!is.na(usa_anova[,4]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(usa_anova[,4]) > alpha) {
+    target <- rownames(usa_anova[which.max(usa_anova[,4]),]) 
+    print(target)
+    lasso_usa <- update(lasso_usa, as.formula(paste('.~.', ' - ', target)))
+    usa_anova <- Anova(lasso_usa)
+    usa_anova <- usa_anova[!is.na(usa_anova[,4]),]
+  } else {
+    break
+  }
+}
+```
+
+```{r usa rf, include=F, cache=T}
+# rf_usa
+set.seed(1)
+#lol doesn't run too large still
+rf_usa <- randomForest(data=data_usa, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=8, ntree=150)
+ggplot() + geom_line(aes(x=1:rf_usa$ntree, y=rf_usa$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_usa on nkill')
+```
+
+
+
+
+
+
+```{r syria lasso, include=F, cache=T}
+set.seed(1)
+Y <- data_syria[,'nkill']
+X <- model.matrix(data=data_syria, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_syria <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_syria_plot <- lasso_syria
+
+lasso_syria_min <- coef(lasso_syria, s='lambda.min')
+lasso_syria_min <- lasso_syria_min[which(lasso_syria_min != 0),]
+input <- rownames(as.matrix(lasso_syria_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ iyear + imonth + extended + longitude + specificity + crit1 + crit2 + crit3 + doubtterr + success + suicide + attacktype1_txt + targtype1_txt + weapsubtype1_txt + propextent_txt')
+
+lasso_syria <- lm(input, data=data_syria)
+```
+
+```{r syria lasso anova, include=F, cache=T}
+syria_anova <- Anova(lasso_syria)
+syria_anova <- syria_anova[!is.na(syria_anova[,4]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(syria_anova[,4]) > alpha) {
+    target <- rownames(syria_anova[which.max(syria_anova[,4]),]) 
+    print(target)
+    lasso_syria <- update(lasso_syria, as.formula(paste('.~.', ' - ', target)))
+    syria_anova <- Anova(lasso_syria)
+    syria_anova <- syria_anova[!is.na(syria_anova[,4]),]
+  } else {
+    break
+  }
+}
+```
+
+```{r syria rf, include=F, cache=T}
+# rf_syria
+set.seed(1)
+#lol doesn't run too large still
+rf_syria <- randomForest(data=data_syria, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=8, ntree=150)
+ggplot() + geom_line(aes(x=1:rf_syria$ntree, y=rf_syria$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_syria on nkill')
+```
+
+
+
+
+
+
+```{r iraq lasso, include=F, cache=T}
+set.seed(1)
+Y <- data_iraq[,'nkill']
+X <- model.matrix(data=data_iraq, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname )[,-1]
+
+lasso_iraq <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10)
+lasso_iraq_plot <- lasso_iraq
+
+lasso_iraq_min <- coef(lasso_iraq, s='lambda.min')
+lasso_iraq_min <- lasso_iraq_min[which(lasso_iraq_min != 0),]
+input <- rownames(as.matrix(lasso_iraq_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('nkill ~ iyear + imonth + iday + extended + latitude + longitude + specificity + crit1 + crit2 + doubtterr + multiple + success + suicide + attacktype1_txt + targtype1_txt + guncertain1 + + weapsubtype1_txt + propextent_txt')
+
+lasso_iraq <- lm(input, data=data_iraq)
+```
+
+```{r iraq lasso anova, include=F, cache=T}
+iraq_anova <- Anova(lasso_iraq)
+iraq_anova <- iraq_anova[!is.na(iraq_anova[,4]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(iraq_anova[,4]) > alpha) {
+    target <- rownames(iraq_anova[which.max(iraq_anova[,4]),]) 
+    print(target)
+    lasso_iraq <- update(lasso_iraq, as.formula(paste('.~.', ' - ', target)))
+    iraq_anova <- Anova(lasso_iraq)
+    iraq_anova <- iraq_anova[!is.na(iraq_anova[,4]),]
+  } else {
+    break
+  }
+}
+```
+
+```{r iraq rf, include=F, cache=T}
+# rf_iraq
+set.seed(1)
+#lol doesn't run too large still
+rf_iraq <- randomForest(data=data_iraq, nkill~.- nwound - provstate - city - targsubtype1_txt - natlty1_txt - gname, mtry=3, ntree=50)
+ggplot() + geom_line(aes(x=1:rf_iraq$ntree, y=rf_iraq$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_iraq on nkill')
+```
+
+
+
+
+```{r country table, echo=F}
+country_table <- data.frame('Adjusted R-Squared (LASSO)' = c(summary(lasso_japan)$adj.r.squared, summary(lasso_usa)$adj.r.squared, summary(lasso_syria)$adj.r.squared, summary(lasso_iraq)$adj.r.squared), 'RSE (LASSO)' = c(summary(lasso_japan)$sigma, summary(lasso_usa)$sigma, summary(lasso_syria)$sigma, summary(lasso_iraq)$sigma), 'MSE of Random Forest' = c(rf_japan$mse[150], rf_usa$mse[150], rf_syria$mse[150], rf_iraq$mse[50]) )
+rownames(country_table) <- c('Japan', 'USA', 'Syria', 'Iraq')
+
+grid.table(country_table)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Data by Target
 
+For our datasets by target of `police`, `military`, and `police`, we will train a classificaion model to predict on `success`. This is because we expected a lower number of deaths if these terror incidents are more specifically targeted. We are instead interested in seeing how different target entities resist terroristic attacks, or if the profiles of terrorists differ across targets.
+
+We will use a logistic regression selected through cross-validation, then backwards select out using Anova().
+
+```{r govenment lasso, echo=F, cache=TRUE}
+set.seed(1)
+Y <- data_government[,'success']
+X <- model.matrix(data=data_government, success~. - provstate - city - targtype1_txt - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_government <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+lasso_government_plot <- lasso_government
+suppressWarnings(plot(lasso_government_plot))
+
+lasso_government_min <- coef(lasso_government, s='lambda.1se')
+lasso_government_min <- lasso_government_min[which(lasso_government_min != 0),]
+input <- rownames(as.matrix(lasso_government_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('success ~ iyear + imonth + extended + region_txt + latitude + longitude + vicinity + crit2 + doubtterr + multiple + suicide + attacktype1_txt + targtype1_txt + weaptype1_txt + guncertain1 + individual + weapsubtype1_txt + nkill + propextent_txt')
+
+suppressWarnings(lasso_government <- glm(input, data=data_government, family = 'binomial'))
+```
+
+```{r government anova, include = F, warn = F, cache=TRUE}
+government_anova <- Anova(lasso_government)
+government_anova <- government_anova[!is.na(government_anova[,3]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(government_anova[,3]) > alpha) {
+    target <- rownames(government_anova[which.max(government_anova[,3]),]) 
+    print(target)
+    lasso_government <- update(lasso_government, as.formula(paste('.~.', ' - ', target)))
+    government_anova <- Anova(lasso_government)
+    government_anova <- government_anova[!is.na(government_anova[,3]),]
+  } else {
+    break
+  }
+}
+```
+
+
+
+
+```{r military lasso, include=F, cache=TRUE}
+set.seed(1) 
+Y <- data_military[,'success']
+X <- model.matrix(data=data_military, success~. - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_military <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+lasso_military_plot <- lasso_military
+plot(lasso_military_plot)
+
+lasso_military_min <- coef(lasso_military, s='lambda.1se')
+lasso_military_min <- lasso_military_min[which(lasso_military_min != 0),]
+input <- rownames(as.matrix(lasso_military_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('success ~ iyear + iday + extended + region_txt + vicinity + latitude + crit1 + doubtterr + multiple + suicide + attacktype1_txt + guncertain1 + individual + weapsubtype1_txt + nkill + nwound + propextent_txt')
+
+lasso_military <- glm(input, data=data_military, family = 'binomial')
+```
+
+```{r military anova, include = F, warn = F, cache=TRUE}
+military_anova <- Anova(lasso_military)
+military_anova <- military_anova[!is.na(military_anova[,3]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(military_anova[,3]) > alpha) {
+    target <- rownames(military_anova[which.max(military_anova[,3]),]) 
+    print(target)
+    lasso_military <- update(lasso_military, as.formula(paste('.~.', ' - ', target)))
+    military_anova <- Anova(lasso_military)
+    military_anova <- military_anova[!is.na(military_anova[,3]),]
+  } else {
+    break
+  }
+}
+```
+
+
+
+
+```{r police lasso, include=F, cache=TRUE}
+set.seed(1)
+Y <- data_police[,'success']
+X <- model.matrix(data=data_police, success~. - provstate - city - targsubtype1_txt - natlty1_txt - gname)[,-1]
+
+lasso_police <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+lasso_police_plot <- lasso_police
+plot(lasso_police_plot)
+
+lasso_police_min <- coef(lasso_police, s='lambda.1se')
+lasso_police_min <- lasso_police_min[which(lasso_police_min != 0),]
+input <- rownames(as.matrix(lasso_police_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('success ~ iyear + extended + region_txt + latitude + specificity + crit1 + doubtterr + multiple + suicide + attacktype1_txt + weaptype1_txt + individual + weapsubtype1_txt + nkill + nwound + propextent_txt')
+
+lasso_police <- glm(input, data=data_police, family = 'binomial')
+```
+
+```{r police anova, include = F, warn = F, cache=TRUE}
+police_anova <- Anova(lasso_police)
+police_anova <- police_anova[!is.na(police_anova[,3]),]
+alpha = 0.01
+while (TRUE) {
+  if (max(police_anova[,3]) > alpha) {
+    target <- rownames(police_anova[which.max(police_anova[,3]),]) 
+    print(target)
+    lasso_police <- update(lasso_police, as.formula(paste('.~.', ' - ', target)))
+    police_anova <- Anova(lasso_police)
+    police_anova <- police_anova[!is.na(police_anova[,3]),]
+  } else {
+    break
+  }
+}
+```
+
+
+
+
+```{r target table, echo=F}
+target_table <- data.frame('Residual Deviance (LASSO)' = c(summary(lasso_government)$deviance, summary(lasso_military)$deviance, summary(lasso_police)$deviance) )
+rownames(target_table) <- c('Government', 'Military', 'Police')
+
+grid.table(target_table)
+```
+
+
+
+
+
+
+
+
 ## Data by Type
+
+TODO
+
+
+
+
 
 # Future Work
 
@@ -399,7 +909,7 @@ nperps would be nice to use, but it is also quite sparse for some reason, we can
 [2] https://www.start.umd.edu/gtd/downloads/Codebook.pdf
 
 ## Removed variables
-```{r}
+```{r removed variables}
 # filter data
 data_clean <- data %>% select(-c(approxdate, resolution, location, summary, alternative, alternative_txt, attacktype2, attacktype2_txt, attacktype3, attacktype3_txt, targtype2, targtype2_txt, targsubtype2, targsubtype2_txt, corp2, target2, natlty2, natlty2_txt, targtype3, targtype3_txt, targsubtype3, targsubtype3_txt, corp3, target3, natlty3, natlty3_txt, gsubname, gname2, gsubname2, gname3, gsubname3, motive, guncertain2, guncertain3, claim2, claimmode2, claimmode2_txt, claim3, claimmode3, claimmode3_txt, compclaim, weaptype1, weapsubtype1, weaptype2, weaptype2_txt, weapsubtype2, weapsubtype2_txt, weaptype3, weaptype3_txt, weapsubtype3, weapsubtype3_txt, weaptype4, weaptype4_txt, weapsubtype4, weapsubtype4_txt, nhostkid, nhostkidus, nhours, ndays, divert, kidhijcountry, ransom, ransomamt, ransomamtus, ransompaid, ransompaidus, ransomnote, hostkidoutcome, hostkidoutcome_txt, nreleased, addnotes, scite1, scite2, scite3, dbsource, INT_LOG, INT_IDEO, INT_MISC, INT_ANY, related, ishostkid)) 
 
@@ -417,3 +927,92 @@ data_clean <- na.omit(data_clean)
 ```{r, echo = F}
 summary(data_clean)
 ```
+
+## Code to Collapse Factor Levels
+```{r collapse levels appx, include=F, cache=TRUE}
+collapse <- function(d, type=''){
+  tgt_cols <- colnames(d)[sapply(d, function(x) length(levels(x))) > 6]
+  
+  for (col in tgt_cols) {
+    if (col != type) {
+      sorted <- sort(table(d[,col]), decreasing=TRUE)
+      top5 <- sorted[1:5]
+      if ('Unknown' %in% names(top5)) {
+        top5[names(sorted[6])] <- sorted[[6]]
+      }
+    
+      d[,col] <- fct_collapse(d[,col], 'Unknown' = levels(d[,col])[!(levels(d[,col]) %in% names(top5))])
+    }
+  }
+}
+```
+
+## Data by Year
+
+<!-- 2017 -->
+<!-- ```{r}  -->
+<!-- plot(lasso_y2017_plot) -->
+<!-- print(y2017_anova) -->
+<!-- ``` -->
+
+<!-- 1997-2016 -->
+<!-- ```{r}  -->
+<!-- plot(lasso_y1997_plot) -->
+<!-- print(y1997_anova) -->
+<!-- ``` -->
+
+
+## Data by Country
+
+Japan Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(japan_anova)
+plot(lasso_japan_plot)
+ggplot() + geom_line(aes(x=1:rf_japan$ntree, y=rf_japan$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_japan on nkill')
+```
+
+
+USA Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(usa_anova)
+plot(lasso_usa_plot)
+ggplot() + geom_line(aes(x=1:rf_usa$ntree, y=rf_usa$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_usa on nkill')
+```
+
+
+Syria Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(syria_anova)
+plot(lasso_syria_plot)
+ggplot() + geom_line(aes(x=1:rf_syria$ntree, y=rf_syria$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_syria on nkill')
+```
+
+
+Iraq Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+```{r, echo=F}
+print(iraq_anova)
+plot(lasso_iraq_plot)
+ggplot() + geom_line(aes(x=1:rf_iraq$ntree, y=rf_iraq$mse)) + labs(x= 'Number of Trees', y= 'MSE', title = 'Random Forest MSE for data_iraq on nkill')
+```
+
+
+## Data by Target
+
+Governmenet:
+```{r, echo=F}
+print(government_anova)
+plot(lasso_government_plot)
+```
+
+Military:
+```{r, echo=F}
+print(military_anova)
+plot(lasso_military_plot)
+```
+
+Police:
+```{r, echo=F}
+print(police_anova)
+plot(lasso_police_plot)
+```
+
