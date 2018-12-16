@@ -57,6 +57,7 @@ The origins of the data is the Global Terrorism Database (GTD). The GTD was deve
 *	`success`, `nkill`, `nwound`, `propextent_txt`: indicates if the incident was successful, the number of killed and wounded, and the extent of property damage (respectively)
 
 To be included in the study, an incident must qualify with three fields:
+
 * The incident must be intentional – the result of a conscious calculation on the part of a
 perpetrator.
 * The incident must entail some level of violence or immediate threat of violence -including
@@ -65,6 +66,7 @@ property violence, as well as violence against people.
 include acts of state terrorism.
 
 Additionally, it must satisfy two of the following three criterion:
+
 * Criterion 1: The act must be aimed at attaining a political, economic, religious, or social
 goal. 
 * Criterion 2: There must be evidence of an intention to coerce, intimidate, or convey some
@@ -115,13 +117,13 @@ data_clean$individual <- as.factor(data_clean$individual)
 ```
 
 
-First, we read in the data given in csv format. There are 181,691 observations and 135 total variables. However, this must be futher cleaned. There were three main steps in the data cleaning process for eliminating variables:
+First, we read in the data given in csv format. There are 181,691 observations and 135 total variables. However, this must be further cleaned. There were three main steps in the data cleaning process for eliminating variables:
 
 1) There were many variables for multiple groups; for instance, there are 3 groups for target (target1, targettype1, targetsubtype1, corp1, target1, natlty1, etc.), 3 groups for attack type, 3 groups for claim, and 3 groups for weapon types. These are present in the case that multiple groups stage an attack, or multiple targets are targeted. However, for the most parts of the dataset, the second and third group for most predictors were NA, and thus were dropped.
 
 2) We filtered variables that were just encodings of other variables. For instance, there were two variables `country` and `country_txt`. The former is a number encoding for a country, while the latter is the name of the country. For purposes of easier readability, we kept the text description. 
 
-3) We finally dropped variables that contained too many NA's. This included number of killed US citizens, group that claimed the incident, etc. Considering the number of US wonded/kill/perp is quite specific, it makes sense that many incident do not report this. Since these caused our models to fail to run, we ended up removing this from the overall data set for the rest of the study.
+3) We finally dropped variables that contained too many NA's. This included number of killed US citizens, group that claimed the incident, etc. Considering the number of US wounded/kill/perp is quite specific, it makes sense that many incident do not report this. Since these caused our models to fail to run, we ended up removing this from the overall data set for the rest of the study.
 
 In general, this final cleaned dataset was used as a baseline for each of our subset analysis. See the appendix for the full list of removed variables. Unless otherwise noted, each subset will be derived from these 31 remaining variables (see below). Additionally, the -9 and -99s that were encoded for missing variables were coded into NA in R. We omitted these NA's from the cleaned dataset due to the large number of examples we had from the database already.
 
@@ -153,7 +155,7 @@ data_2017 <- data_clean %>% filter(iyear == 2017)
 data_1997 <- data_clean %>% filter(iyear >= 1997 & iyear <= 2016)
 ```
 
-Looking at the summary of the number of number of killed and wounded (respectively), we see that on avreage there are 2.192 killed and 3.408 wounded, but the medians are both 0. The maximum of these incidents were both the tragic attack on the World Trade Center on 9/11/2001. 
+Looking at the summary of the number of number of killed and wounded (respectively), we see that on average there are 2.192 killed and 3.408 wounded, but the medians are both 0. The maximum of these incidents were both the tragic attack on the World Trade Center on 9/11/2001. 
 
 ```{r nkill nwound, echo = F}
 summary(data_clean$nkill)
@@ -389,7 +391,7 @@ data_property <- data_property[, sapply(data_property, function(c) length(unique
 
 ## Entire Dataset Analysis
 
-We will start with the whole dataset `data_clean` and by training a classifier on `nkill` with a logistic classifier. We will run cv.glm with $\alpha=1$ to run LASSO regression for model selection. Once we take the smallest model at most 1 std deviation of cross-validated mean errors away from the minimum cvm, we will run Anova() iteratively to remove the most insginficant grouping untill all predictors are significant at the $\alpha=0.01$ level.
+We will start with the whole dataset `data_clean` and by training a classifier on `nkill` with a logistic classifier. We will run cv.glm with $\alpha=1$ to run LASSO regression for model selection. Once we take the smallest model at most 1 std deviation of cross-validated mean errors away from the minimum cvm, we will run Anova() iteratively to remove the most insignificant grouping until all predictors are significant at the $\alpha=0.01$ level.
 
 Note that for this specific subset of the data, we will use `lambda.min` instead of `lambda.1se` as `lambda.1se` implies a model with 0 nonzero coefficeints (essentially, just an intercept). Thus for feasibility, we will use `lambda.min`.
 
@@ -543,15 +545,15 @@ lasso_japan <- lm(input, data=data_japan)
 ```
 
 ```{r japan lasso anova, include=F, cache=T}
-japan_anova <- Anova(lasso_japan)
+suppressWarnings(japan_anova <- Anova(lasso_japan))
 japan_anova <- japan_anova[!is.na(japan_anova[,4]),]
 alpha = 0.01
 while (TRUE) {
   if (max(japan_anova[,4]) > alpha) {
     target <- rownames(japan_anova[which.max(japan_anova[,4]),]) 
     print(target)
-    lasso_japan <- update(lasso_japan, as.formula(paste('.~.', ' - ', target)))
-    japan_anova <- Anova(lasso_japan)
+    suppressWarnings(lasso_japan <- update(lasso_japan, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(japan_anova <- Anova(lasso_japan))
     japan_anova <- japan_anova[!is.na(japan_anova[,4]),]
   } else {
     break
@@ -563,7 +565,7 @@ Adjusted R-Squared for Japan (LASSO): `r summary(lasso_japan)$adj.r.squared`
 
 RSE for Japan (LASSO): `r summary(lasso_japan)$sigma`
 
-Let us also try running random forest model on this datset. We must remove  `provstate`, `city`, `targsubtype_txt`, `natlty1_txt`, and `gname` as they have oveer 53 levels. We tuned our random forest appropriatly with `mtry` and `ntree`. Displayed is the MSE of our RF:
+Let us also try running random forest model on this dataset. We must remove  `provstate`, `city`, `targsubtype_txt`, `natlty1_txt`, and `gname` as they have over 53 levels. We tuned our random forest appropriately with `mtry` and `ntree`. Displayed is the MSE of our RF:
 
 ```{r japan rf, include=T, echo=F, cache=T}
 # rf_japan
@@ -600,15 +602,15 @@ lasso_usa <- lm(input, data=data_usa)
 ```
 
 ```{r usa lasso anova, include=F, cache=T}
-usa_anova <- Anova(lasso_usa)
+suppressWarnings(usa_anova <- Anova(lasso_usa))
 usa_anova <- usa_anova[!is.na(usa_anova[,4]),]
 alpha = 0.01
 while (TRUE) {
   if (max(usa_anova[,4]) > alpha) {
     target <- rownames(usa_anova[which.max(usa_anova[,4]),]) 
     print(target)
-    lasso_usa <- update(lasso_usa, as.formula(paste('.~.', ' - ', target)))
-    usa_anova <- Anova(lasso_usa)
+    suppressWarnings(lasso_usa <- update(lasso_usa, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(usa_anova <- Anova(lasso_usa))
     usa_anova <- usa_anova[!is.na(usa_anova[,4]),]
   } else {
     break
@@ -649,15 +651,15 @@ lasso_syria <- lm(input, data=data_syria)
 ```
 
 ```{r syria lasso anova, include=F, cache=T}
-syria_anova <- Anova(lasso_syria)
+suppressWarnings(syria_anova <- Anova(lasso_syria))
 syria_anova <- syria_anova[!is.na(syria_anova[,4]),]
 alpha = 0.01
 while (TRUE) {
   if (max(syria_anova[,4]) > alpha) {
     target <- rownames(syria_anova[which.max(syria_anova[,4]),]) 
     print(target)
-    lasso_syria <- update(lasso_syria, as.formula(paste('.~.', ' - ', target)))
-    syria_anova <- Anova(lasso_syria)
+    suppressWarnings(lasso_syria <- update(lasso_syria, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(syria_anova <- Anova(lasso_syria))
     syria_anova <- syria_anova[!is.na(syria_anova[,4]),]
   } else {
     break
@@ -698,15 +700,15 @@ lasso_iraq <- lm(input, data=data_iraq)
 ```
 
 ```{r iraq lasso anova, include=F, cache=T}
-iraq_anova <- Anova(lasso_iraq)
+suppressWarnings(iraq_anova <- Anova(lasso_iraq))
 iraq_anova <- iraq_anova[!is.na(iraq_anova[,4]),]
 alpha = 0.01
 while (TRUE) {
   if (max(iraq_anova[,4]) > alpha) {
     target <- rownames(iraq_anova[which.max(iraq_anova[,4]),]) 
     print(target)
-    lasso_iraq <- update(lasso_iraq, as.formula(paste('.~.', ' - ', target)))
-    iraq_anova <- Anova(lasso_iraq)
+    suppressWarnings(lasso_iraq <- update(lasso_iraq, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(iraq_anova <- Anova(lasso_iraq))
     iraq_anova <- iraq_anova[!is.na(iraq_anova[,4]),]
   } else {
     break
@@ -732,8 +734,21 @@ rownames(country_table) <- c('Japan', 'USA', 'Syria', 'Iraq')
 grid.table(country_table)
 ```
 
+Taking a look at the Anova() and full summary outputs in the Appendix, we see some interesting findings:
 
+For Japan, our most significant variable is `attacktype1_txtHostage Taking (Barricade Incident)`. Examining the japan dataset we see two data points where this categorical level is true:
 
+```{r japan detail table, echo=F}
+grid.table(data.frame(data_japan[data_japan$attacktype1_txt == 'Hostage Taking (Barricade Incident)',])[,c('provstate', 'city', 'attacktype1_txt', 'nkill', 'nwound')])
+```
+
+We see that only the incident in Kanagawa/Sagamihara actually involved any target deaths (with a decent number of 26 people wounded). It seems that this model has overfit to this single datapoint.
+
+For the USA, we find a much simpler model with only 5 predictors (vicinity and the 4 levels of `propextent_txt`). `propextent_txtCatastrophic (likely >= $1 billion)` is the most significant predictor holding all other constant, followed by `vicinity1`. The former maybe due to the tragic 9/11 incident which is clearly in the Catastrophic level for property damage; this maybe another case of overfitting to a single point of extreme noise. The latter (`vicinity1`) suggests that large centers of population have more targets killed. This may simply be due to population density and also does not serve as a good predictor.
+
+For Syria, there are a lot more predictors than in the USA or Japan dataset (suggesting a complexity of terrorism characterizations in this area). More notably, we see that `crit3` is highly significant. `crit3` incidents are described as "Outside International Humanitarian Law", which aligns with the modern day rising refugee crisis. Additionally, `suicide`, `weapsubtype1_txtAutomatic or Semi-Automatic Rifle`, and `weapsubtype1_txtVehicle` are quite good predictors of `nkill`. This seems to differ from the tools used by terrorists in developed countries such as Japan and the US.
+
+For Iraq, we see that some noteworthy significant predictors are `iyear`, `extended`, `crit1`, `suicide`, as well as many `attacktype1_txt` and `weapsubtype1_txt` levels such as Assassination, Bombing, Infrastructure, Hostages, Arson, and Automatic/semi rifle/guns. Given that most of our data is recent (with post-1997 incidents better reported than those before), it makes sense that Iraq appears to be the most violent region. The early 2000s War on Terror may play a role in influencing so many military-ques incidents, though such a thought is only a conjecture; we would need more complex analyses to test that hypothesis. Regardless, it seems deadly terrorism incidents in Iraq are mainly influenced by extended, political/economic/religious, military aggression.
 
 
 
@@ -747,9 +762,9 @@ grid.table(country_table)
 
 ## Data by Target
 
-For our datasets by target of `police`, `military`, and `police`, we will train a classificaion model to predict on `success`. This is because we expected a lower number of deaths if these terror incidents are more specifically targeted. We are instead interested in seeing how different target entities resist terroristic attacks, or if the profiles of terrorists differ across targets.
+For our datasets by target of `police`, `military`, and `police`, we will train a classification model to predict on `success`. This is because we expected a lower number of deaths if these terror incidents are more specifically targeted. We are instead interested in seeing how different target entities resist terrorist attacks, or if the profiles of terrorists differ across targets.
 
-We will use a logistic regression selected through cross-validation, then backwards select out using Anova().
+We will use a logistic regression selected through cross-validation, then backwards select out using Anova(). Here is a sample cross-validated deviance graph by lambda value for government. The remaining relevant outputs are in the Appendix.
 
 ```{r govenment lasso, echo=F, cache=TRUE}
 set.seed(1)
@@ -879,8 +894,17 @@ grid.table(target_table)
 ```
 
 
+Taking a look at the government dataset, we have no variables of real surprise. Assassination, Bombing, Infrastructure, Hostage seem to be strong predictors. Otherwise, we find it somewhat surprising that `crit1` was not chosen as it relates to politically charged terror attacks.
 
+In the military dataset, we see nearly all standard military equipment in weapsubtype are significant; this includes levels such as rifles, explosives, handguns, knives, pipe bombs, time bombs, projectiles, and even vehicles. The scale of terrorism (maybe even warfare in this category) is clearly much higher as successful terrorist must be well equipped to target a military entity(s).
 
+As for the police dataset, we see some interesting predictors that relate to geographical attributes. `latitude`, `specificity2`, and `specificity3` are very significant (holding each other and all other predictors constant) at predicting success:
+
+```{r police lat and spec3 table, echo=F}
+grid.table( data.frame(coef(summary(lasso_police))[c(2,3,4),c(1,4)] ) )
+```
+
+More specifically, latitude decreases the log-odds ration of success by `r coef(summary(lasso_police))[c(2),1]` per 1 degree increase in latitude; the more north we go, the less likely a police-targeted terror attack succeeds. `specificity` records how granular the location data is; it discretely ranges from 1 (meaning lat/lang of the city/town in known) to 4 (meaning no 1st order administrative region is known). The presence of `specificity2`, and `specificity3` also decrease the log-odds ration by `r coef(summary(lasso_police))[c(3),1]` and `r coef(summary(lasso_police))[c(4),1]` of success respectively. In general, southern large cities are more likely to be hit by successful terror attacks targeting the police. This suggests situations of political unrest where the population (or rebel group) may be fighting to protest or overthrow a incumbent government (though this also needs more specific testing to be a true conclusion).
 
 
 
@@ -898,7 +922,13 @@ TODO
 There are many aspects that can be focused on
 nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
 
+We would to explore the additional hypothesis mentioned throughout our analysis. This includes studying if or how the US's political stances have shaped terrorism, and whether large southern cites tend to have high crime rates. These question cannot be answered with the GTD, but we can use these results as a basis of what to search for or expect with the future work.
+
+Many of our comparison models, such as the four for the countries, vary drastically in sample size. This led to a wide range of errors/accuracies between the four models trained. In the future, we may want to use more size-comparable choices of countries or partitions such that size of the sub-dataset is not a factor in modeling. Additionally, the skewness of some predictors suggest that we should have filtered even more out during the preprocessing step. Our large number of potential predictors to train on raises concerns about p-hacking, a situation where we may falsely find significance simply due to so many variables and not a true underlying relationship. [3]
+
 ## Conclusion
+
+Our country datasets most notably showed the difference between developed and non-developed countries. Developed countries (Japan, USA) tended to have fewer terrorist incidents overall, but also ones that involve less militaristic conflict. There seems to be no strong predictor of the severity of casualties in these developed countries, which may have led our model to overfit onto random noise. On the other hand, non-developed countries were tied strongly with military conflict, targets, and weapons. This suggets an important, but somewhat expected, result that more war-prone regions will tend to have terror attacks with higher casualties.
 
 \newpage
 
@@ -907,6 +937,7 @@ nperps would be nice to use, but it is also quite sparse for some reason, we can
 ## Works Cited
 [1] https://books.google.com/books?id=6qSjk2C9x6wC&pg=PA161#v=onepage&q&f=false
 [2] https://www.start.umd.edu/gtd/downloads/Codebook.pdf
+[3] https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002106
 
 ## Removed variables
 ```{r removed variables}
@@ -929,7 +960,7 @@ summary(data_clean)
 ```
 
 ## Code to Collapse Factor Levels
-```{r collapse levels appx, include=F, cache=TRUE}
+```{r collapse levels appx, include=T, cache=TRUE}
 collapse <- function(d, type=''){
   tgt_cols <- colnames(d)[sapply(d, function(x) length(levels(x))) > 6]
   
@@ -964,7 +995,7 @@ collapse <- function(d, type=''){
 
 ## Data by Country
 
-Japan Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+Japan Final Anova output, LASSO cvm-by-lambda, and RF mse-by-ntree
 ```{r, echo=F}
 print(japan_anova)
 plot(lasso_japan_plot)
@@ -972,7 +1003,7 @@ ggplot() + geom_line(aes(x=1:rf_japan$ntree, y=rf_japan$mse)) + labs(x= 'Number 
 ```
 
 
-USA Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+USA Final Anova output, LASSO cvm-by-lambda, and RF mse-by-ntree
 ```{r, echo=F}
 print(usa_anova)
 plot(lasso_usa_plot)
@@ -980,7 +1011,7 @@ ggplot() + geom_line(aes(x=1:rf_usa$ntree, y=rf_usa$mse)) + labs(x= 'Number of T
 ```
 
 
-Syria Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+Syria Final Anova output, LASSO cvm-by-lambda, and RF mse-by-ntree
 ```{r, echo=F}
 print(syria_anova)
 plot(lasso_syria_plot)
@@ -988,7 +1019,7 @@ ggplot() + geom_line(aes(x=1:rf_syria$ntree, y=rf_syria$mse)) + labs(x= 'Number 
 ```
 
 
-Iraq Final Anova output, LASSO cvm-by-lambday, and RF mse-by-ntree
+Iraq Final Anova output, LASSO cvm-by-lambda, and RF mse-by-ntree
 ```{r, echo=F}
 print(iraq_anova)
 plot(lasso_iraq_plot)
@@ -998,7 +1029,7 @@ ggplot() + geom_line(aes(x=1:rf_iraq$ntree, y=rf_iraq$mse)) + labs(x= 'Number of
 
 ## Data by Target
 
-Governmenet:
+Government:
 ```{r, echo=F}
 print(government_anova)
 plot(lasso_government_plot)
