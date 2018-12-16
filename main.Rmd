@@ -414,96 +414,28 @@ input <- as.formula('nkill ~ iyear + extended + region_txt + latitude + specific
 lasso_clean <- lm(input, data=data_clean)
 ```
 
-TODO
-
-
-## Data by Year
-
-Now let us move toward examining smaller, more specific datasets. We will start with looking at the 2017 vs 1997-2016 data to see how terrorism now compares to the past. We will be predicting on success as to discover what variables affect successful terrorism in different time periods. We will use LASSO+Anova() as before.
-
-Data in 2017:
-```{r y2017 lasso, echo=F, cache=TRUE}
-set.seed(1)
-Y <- data_2017[,'success']
-X <- model.matrix(data=data_2017, success~. -country_txt - provstate - city - targsubtype1_txt - weapsubtype1_txt - natlty1_txt - gname)[,-1]
-
-lasso_y2017 <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
-lasso_y2017_plot <- lasso_y2017
-
-lasso_y2017_min <- coef(lasso_y2017, s='lambda.1se')
-lasso_y2017_min <- lasso_y2017_min[which(lasso_y2017_min != 0),]
-input <- rownames(as.matrix(lasso_y2017_min))
-if (input[1] == '(Intercept)') {
-  input <- input[-1]
-}
-input <- as.formula('success ~ iday + extended + region_txt + latitude + longitude + specificity + vicinity + crit1 + crit3 + multiple + suicide + attacktype1_txt + targtype1_txt + weaptype1_txt + guncertain1 + weapsubtype1_txt + nkill + nwound + propextent_txt')
-
-suppressWarnings(lasso_y2017 <- glm(input, data=data_2017, family = 'binomial'))
-```
-
-```{r y2017 anova, include = F, warn = F, cache=TRUE}
-suppressWarnings(y2017_anova <- Anova(lasso_y2017))
-y2017_anova <- y2017_anova[!is.na(y2017_anova[,3]),]
+```{r entire set lasso anova, include=F, cache=T}
+suppressWarnings(clean_anova <- Anova(lasso_clean))
+clean_anova <- clean_anova[!is.na(clean_anova[,4]),]
 alpha = 0.01
 while (TRUE) {
-  if (max(y2017_anova[,3]) > alpha) {
-    target <- rownames(y2017_anova[which.max(y2017_anova[,3]),]) 
+  if (max(clean_anova[,4]) > alpha) {
+    target <- rownames(clean_anova[which.max(clean_anova[,4]),]) 
     print(target)
-    suppressWarnings(lasso_y2017 <- update(lasso_y2017, as.formula(paste('.~.', ' - ', target))))
-    suppressWarnings(y2017_anova <- Anova(lasso_y2017))
-    y2017_anova <- y2017_anova[!is.na(y2017_anova[,3]),]
+    suppressWarnings(lasso_clean <- update(lasso_clean, as.formula(paste('.~.', ' - ', target))))
+    suppressWarnings(clean_anova <- Anova(lasso_clean))
+    clean_anova <- clean_anova[!is.na(clean_anova[,4]),]
   } else {
     break
   }
 }
 ```
 
+Adjusted R-Squared for Entire Dataset (LASSO): `r summary(lasso_clean)$adj.r.squared`
 
-Data from 1997-2016:
-```{r y1997 lasso, echo=F, cache=TRUE, eval=F}
-set.seed(1)
-Y <- data_1997[,'success']
-X <- model.matrix(data=data_1997, success~. -country_txt - provstate - city - targsubtype1_txt - weapsubtype1_txt - natlty1_txt - gname)[,-1]
+RSE for Entire Dataset (LASSO): `r summary(lasso_clean)$sigma`
 
-lasso_y1997 <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
-lasso_y1997_plot <- lasso_y1997
-
-lasso_y1997_min <- coef(lasso_y1997, s='lambda.1se')
-lasso_y1997_min <- lasso_y1997_min[which(lasso_y1997_min != 0),]
-input <- rownames(as.matrix(lasso_y1997_min))
-if (input[1] == '(Intercept)') {
-  input <- input[-1]
-}
-input <- as.formula('success ~ iday + imonth + iday + extended + region_txt + latitude + longitude + specificity + vicinity + crit1 + crit2 + crit3 + doubtterr + multiple + suicide + attacktype1_txt + targtype1_txt + weaptype1_txt + nkill + nwound + propextent_txt')
-
-suppressWarnings(lasso_y1997 <- glm(input, data=data_1997, family = 'binomial'))
-```
-
-```{r y1997 anova, include = F, warn = F, cache=TRUE, eval=F}
-suppressWarnings(y1997_anova <- Anova(lasso_y1997))
-y1997_anova <- y1997_anova[!is.na(y1997_anova[,3]),]
-alpha = 0.01
-while (TRUE) {
-  if (max(y1997_anova[,3]) > alpha) {
-    target <- rownames(y1997_anova[which.max(y1997_anova[,3]),]) 
-    print(target)
-    suppressWarnings(lasso_y1997 <- update(lasso_y1997, as.formula(paste('.~.', ' - ', target))))
-    suppressWarnings(y1997_anova <- Anova(lasso_y1997))
-    y1997_anova <- y1997_anova[!is.na(y1997_anova[,3]),]
-  } else {
-    break
-  }
-}
-```
-
-
-
-```{r year table, echo=F, eval=F}
-year_table <- data.frame('Residual Deviance' = c(summary(lasso_y2017)$deviance, summary(lasso_y1997)$deviance))
-rownames(year_table) <- c('2017', '1997-2016')
-grid.table(year_table)
-
-```
+From these R-Squared values, it seems that the model is not able to explain a lot of variance in the nkill dataset, but with a pvalue of 2.2e-16, the model does seem significant in that regard. Due to the poor performance of the model on the overall dataset, we subset the data into smaller datasets to use for further analysis.
 
 
 
@@ -911,16 +843,73 @@ More specifically, latitude decreases the log-odds ration of success by `r coef(
 
 ## Data by Type
 
-TODO
+We tested a subset of data on only attacks where hostages were taken and some form of a ransom was demanded. These were interesting because these attacks have all been successful - some form of kidnapping has taken place - but the event is not over. We take the other predictors in the dataset and predict on if the kidnapping will be resolved successfully (release of the hostages or sucessful rescue), or not. 
+
+```{r clean ransom, include = F}
+data_ransom$ransomamt[data_ransom$ransomamt < 0] <- 0
+data_ransom$ransomamtus[data_ransom$ransomamtus < 0] <- 0
+data_ransom$ransompaid[data_ransom$ransompaid < 0] <- 0
+data_ransom$ransompaidus[data_ransom$ransompaidus < 0] <- 0
+data_ransom$nreleased[data_ransom$nreleased < 0] <- 0
+data_ransom[] <- lapply(data_ransom, function(x) if(is.factor(x)) factor(x) else x)
+library(forcats)
+data_ransom$hostkidoutcome_txt = data_ransom$hostkidoutcome_txt %>% fct_collapse(Y = c("Successful Rescue","Hostage(s) released by perpetrators"))
+data_ransom$hostkidoutcome_txt = data_ransom$hostkidoutcome_txt %>% fct_collapse(N = c("Hostage(s) killed (not during rescue attempt)","Combination", "Unknown", "Hostage(s) escaped (not during rescue attempt)", "Attempted Rescue"))
+```
 
 
+
+```{r ransom lasso, echo=F, cache=TRUE}
+set.seed(1)
+Y <- data_ransom[,'hostkidoutcome_txt']
+X <- model.matrix(data=data_ransom, hostkidoutcome_txt ~.- hostkidoutcome - nreleased - ransomnote - ransomamtus - country_txt - provstate - city - targsubtype1_txt - nkill - natlty1_txt - gname)[,-1]
+
+lasso_ransom <- cv.glmnet(x=X, y=Y, alpha=1, nfold=10, family='binomial')
+lasso_ransom_plot <- lasso_ransom
+suppressWarnings(plot(lasso_ransom_plot))
+
+lasso_ransom_min <- coef(lasso_ransom, s='lambda.1se')
+lasso_ransom_min <- lasso_ransom_min[which(lasso_ransom_min != 0),]
+input <- rownames(as.matrix(lasso_ransom_min))
+if (input[1] == '(Intercept)') {
+  input <- input[-1]
+}
+input <- as.formula('hostkidoutcome_txt ~ iyear + region_txt + multiple + attacktype1_txt + targtype1_txt + weaptype1_txt + weapsubtype1_txt + propextent_txt + ransomamt')
+suppressWarnings(lasso_ransom <- glm(input, data=data_ransom, family = 'binomial'))
+```
+
+```{r ransom anova, include = F, warn = F, cache=TRUE}
+ransom_anova <- Anova(lasso_ransom)
+ransom_anova <- ransom_anova[!is.na(ransom_anova[,3]),]
+alpha = 0.05
+while (TRUE) {
+  if (max(ransom_anova[,3]) > alpha) {
+    target <- rownames(ransom_anova[which.max(ransom_anova[,3]),]) 
+    print(target)
+    lasso_ransom <- update(lasso_ransom, as.formula(paste('.~.', ' - ', target)))
+    ransom_anova <- Anova(lasso_ransom)
+    ransom_anova <- ransom_anova[!is.na(ransom_anova[,3]),]
+  } else {
+    break
+  }
+}
+```
+
+We fit a binomial classification regression on "successful" or "unsuccessful". From the ANOVA and LASSO analysis, the most significant predictors for predicting the outcome of the kidnapping were "iyear", "attacktype1_txt", "weapsubtype1_txt", "propextent_txt", and "ransomamt". While the latter four variables are explainable - the type of attack, the type of weapons used, the extent of property damage, and the overall ransom demanded - the year seems to be out of place as a significant predictor.
+
+After plotting the year vs. successful hostage releases (successful in green, unsuccessful in red), it is clear that the reasoning for this is because many kidnappings in recent years have been able to be resolved successfully. This is a positive trend that we hope keeps happening!
+
+```{r ransom plot, echo = F}
+counts_age = table(data_ransom$hostkidoutcome_txt, data_ransom$iyear)
+barplot(counts_age, main="Successful Hostage Release by year",
+  xlab="Age Bracket", col=c("red","darkgreen"))
+```
 
 
 
 # Future Work
 
-There are many aspects that can be focused on
-nperps would be nice to use, but it is also quite sparse for some reason, we can mention that in the write up.
+There are many aspects that can be focused on for future works. From the raw data, there was a column of the numer of perpetrators. This seems logically correlated with the success of the attack, but due to the sparsity of the reportings, we were unable to use the variable. There were other issues related to this as well.
 
 We would to explore the additional hypothesis mentioned throughout our analysis. This includes studying if or how the US's political stances have shaped terrorism, and whether large southern cites tend to have high crime rates. These question cannot be answered with the GTD, but we can use these results as a basis of what to search for or expect with the future work.
 
@@ -978,21 +967,6 @@ collapse <- function(d, type=''){
 }
 ```
 
-## Data by Year
-
-<!-- 2017 -->
-<!-- ```{r}  -->
-<!-- plot(lasso_y2017_plot) -->
-<!-- print(y2017_anova) -->
-<!-- ``` -->
-
-<!-- 1997-2016 -->
-<!-- ```{r}  -->
-<!-- plot(lasso_y1997_plot) -->
-<!-- print(y1997_anova) -->
-<!-- ``` -->
-
-
 ## Data by Country
 
 Japan Final Anova output, LASSO cvm-by-lambda, and RF mse-by-ntree
@@ -1047,3 +1021,10 @@ print(police_anova)
 plot(lasso_police_plot)
 ```
 
+## Data by Type
+
+Ransom:
+```{r, echo=F}
+print(ransom_anova)
+plot(lasso_ransom_plot)
+```
