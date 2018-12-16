@@ -37,7 +37,7 @@ Acts of intentional violence at a sub-national level have occurred since the dev
 
 This leads to the question - how can people use historical data to predict the outcome of terrorist activity? The answer to this lies in statistical analysis of terrorist incidents. Using location data, attack type, group names, target data, and other past terrorism data, we can apply statistical models to best predict the outcome of events - success, number of killed/wounded, total property damage, etc. With a better understanding of what factors can lead to a foiled or successful attempt, people can better try to prevent such attacks in the future.
 
->SUMMARY OF SOME RESULTS<
+We found that the predictors for terrorism varied across different regions (countries), targets, and types. Regions with more political and economic tension tend to have more violent, successful terrorism plots involving many casualties than developed areas. Terrorist incidents targeting local law enforcement tend to occur in large urban centers (cities, towns) in southern regions of the world. Militaries engaging terrorist should be wary of the level of resources available to their enemy; the more similar a terrorist groups is to a militia or PMC (private military contractor), the more successful the terrorists tend to be. Ransom incidents tend to end with more released hostages as the years progress, a positive outlook for the future of combating terrorism.
 
 \newpage
 
@@ -77,7 +77,7 @@ In general, the GTD does not include plots that are not enacted or attempted. Fo
 
 ## Goal of the study
 
-The goal of the study is to utilize data on terrorist attacks and identify which factors can be best used to predict the outcome of such attacks. In this study, we will be analyzing various outcomes, from success, number of wounded, number of killed, and total property damage. 
+The goal of the study is to utilize data on terrorist attacks and identify which factors can be best used to predict the outcome of such attacks. In this study, we will be analyzing various outcomes, from success, number of killed, and random outcomes. 
 
 ## EDA
 
@@ -819,7 +819,7 @@ while (TRUE) {
 
 
 ```{r target table, echo=F}
-target_table <- data.frame('Residual Deviance (LASSO)' = c(summary(lasso_government)$deviance, summary(lasso_military)$deviance, summary(lasso_police)$deviance) )
+target_table <- data.frame('Residual Deviance (LASSO)' = c(summary(lasso_government)$deviance, summary(lasso_military)$deviance, summary(lasso_police)$deviance), 'Cross-validated Accuracy' = c(mean(as.numeric(predict(lasso_government, data_government) > 0.5)), mean(as.numeric(predict(lasso_military, data_military) > 0.5)), mean(as.numeric(predict(lasso_police, data_police) > 0.5))) )
 rownames(target_table) <- c('Government', 'Military', 'Police')
 
 grid.table(target_table)
@@ -843,7 +843,7 @@ More specifically, latitude decreases the log-odds ration of success by `r coef(
 
 ## Data by Type
 
-We tested a subset of data on only attacks where hostages were taken and some form of a ransom was demanded. These were interesting because these attacks have all been successful - some form of kidnapping has taken place - but the event is not over. We take the other predictors in the dataset and predict on if the kidnapping will be resolved successfully (release of the hostages or sucessful rescue), or not. 
+We tested a subset of data on only attacks where hostages were taken and some form of a ransom was demanded. These were interesting because these attacks have all been successful - some form of kidnapping has taken place - but the event is not over. We take the other predictors in the dataset and predict on if the kidnapping will be resolved successfully (release of the hostages or successful rescue), or not. 
 
 ```{r clean ransom, include = F}
 data_ransom$ransomamt[data_ransom$ransomamt < 0] <- 0
@@ -909,7 +909,7 @@ barplot(counts_age, main="Successful Hostage Release by year",
 
 # Future Work
 
-There are many aspects that can be focused on for future works. From the raw data, there was a column of the numer of perpetrators. This seems logically correlated with the success of the attack, but due to the sparsity of the reportings, we were unable to use the variable. There were other issues related to this as well.
+There are many aspects that can be focused on for future works. From the raw data, there was a column of the number of perpetrators. This seems logically correlated with the success of the attack, but due to the sparsity of the reporting, we were unable to use the variable. There were other issues related to this as well.
 
 We would to explore the additional hypothesis mentioned throughout our analysis. This includes studying if or how the US's political stances have shaped terrorism, and whether large southern cites tend to have high crime rates. These question cannot be answered with the GTD, but we can use these results as a basis of what to search for or expect with the future work.
 
@@ -917,7 +917,12 @@ Many of our comparison models, such as the four for the countries, vary drastica
 
 ## Conclusion
 
-Our country datasets most notably showed the difference between developed and non-developed countries. Developed countries (Japan, USA) tended to have fewer terrorist incidents overall, but also ones that involve less militaristic conflict. There seems to be no strong predictor of the severity of casualties in these developed countries, which may have led our model to overfit onto random noise. On the other hand, non-developed countries were tied strongly with military conflict, targets, and weapons. This suggets an important, but somewhat expected, result that more war-prone regions will tend to have terror attacks with higher casualties.
+Our country datasets most notably showed the difference between developed and non-developed countries. Developed countries (Japan, USA) tended to have fewer terrorist incidents overall, but also ones that involve less militaristic conflict. There seems to be no strong predictor of the severity of casualties in these developed countries, which may have led our model to overfit onto random noise. On the other hand, non-developed countries were tied strongly with military conflict, targets, and weapons. This suggest an important, but somewhat expected, result that more war-prone regions will tend to have terror attacks with higher casualties.
+
+
+>andrew insert random conclusion here?<
+
+As terrorist evolve in the modern day, local authorities continue to stay a step ahead to prevent their attacks. Knowing what factors, such as location, weapons available, socioeconomic/political tensions, and potential targets can let authorities better predict where the next big attack may be.
 
 \newpage
 
@@ -925,7 +930,9 @@ Our country datasets most notably showed the difference between developed and no
 
 ## Works Cited
 [1] https://books.google.com/books?id=6qSjk2C9x6wC&pg=PA161#v=onepage&q&f=false
+
 [2] https://www.start.umd.edu/gtd/downloads/Codebook.pdf
+
 [3] https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002106
 
 ## Removed variables
