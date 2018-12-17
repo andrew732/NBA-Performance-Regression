@@ -192,6 +192,8 @@ mapCountryData(map,
                 numCats=100)
 ```
 
+!['Total Incidents by Country (1970-2017)'](tot_incidents.png)
+
 A similar map to look at, the aggregate number of people killed by country, displays similar information. However, it is notable that in this chloropleth, the shade of some South Asian countries (notably India), as well as many countries in Western Europe and the USA, drop off significantly. This signifies that while there are a large number of incidents in these countries, either they do not end up being successful, or are stopped at the source quickly. This makes these countries worthy of further examination.
 
 ```{r world map nkill, echo = F}
@@ -211,6 +213,8 @@ mapCountryData(map2,
                 catMethod='fixedWidth', 
                 numCats=100)
 ```
+
+!['Total Killed People by Country (1970-2017)'](tot_killed.png)
 
 Based on these maps, it makes sense to also subset out specific countries. Thus, we developed a subset for 1) Iraq, the country with by far the most incidents and total number killed, 2) the USA, given the fact that we are based in the USA and for the large number of unsuccessful or small incidents, 3) Japan, for being a country with a small number of incidents and number killed, and 4) Syria, for the recent developments of the Syrian Civil War. For larger context of countries that score high on the Human Development Index (HDI), we also subset off a developed countries dataset, consisting of those located in North America, Western Europe, and East Asia.
 
@@ -836,7 +840,7 @@ As for the police dataset, we see some interesting predictors that relate to geo
 grid.table( data.frame(coef(summary(lasso_police))[c(2,3,4),c(1,4)] ) )
 ```
 
-More specifically, latitude decreases the log-odds ration of success by `r coef(summary(lasso_police))[c(2),1]` per 1 degree increase in latitude; the more north we go, the less likely a police-targeted terror attack succeeds. `specificity` records how granular the location data is; it discretely ranges from 1 (meaning lat/lang of the city/town in known) to 4 (meaning no 1st order administrative region is known). The presence of `specificity2`, and `specificity3` also decrease the log-odds ration by `r coef(summary(lasso_police))[c(3),1]` and `r coef(summary(lasso_police))[c(4),1]` of success respectively. In general, southern large cities are more likely to be hit by successful terror attacks targeting the police. This suggests situations of political unrest where the population (or rebel group) may be fighting to protest or overthrow a incumbent government (though this also needs more specific testing to be a true conclusion).
+More specifically, latitude decreases the log-odds ration of success by `r coef(summary(lasso_police))[c(2),1]` per 1 degree increase in latitude; the more north we go, the less likely a police-targeted terror attack succeeds. `specificity` records how granular the location data is; it discretely ranges from 1 (meaning lat/lang of the city/town in known) to 4 (meaning no 1st order administrative region is known). The presence of `specificity2`, and `specificity3` also decrease the log-odds ration by `r coef(summary(lasso_police))[c(3),1]` and `r coef(summary(lasso_police))[c(4),1]` of success respectively. In general, southern large cities are more likely to be hit by successful terror attacks targeting the police. These may be areas of political unrest where anti-government rebel groups are common.
 
 
 
@@ -899,7 +903,7 @@ We fit a binomial classification regression on "successful" or "unsuccessful". F
 
 After plotting the year vs. successful hostage releases (successful in green, unsuccessful in red), it is clear that the reasoning for this is because many kidnappings in recent years have been able to be resolved successfully. This is a positive trend that we hope keeps happening!
 
-```{r ransom plot, echo = F}
+```{r ransom plot, echo = F, fig.height=3.5}
 counts_age = table(data_ransom$hostkidoutcome_txt, data_ransom$iyear)
 barplot(counts_age, main="Successful Hostage Release by year",
   xlab="Age Bracket", col=c("red","darkgreen"))
@@ -917,10 +921,7 @@ Many of our comparison models, such as the four for the countries, vary drastica
 
 ## Conclusion
 
-Our country datasets most notably showed the difference between developed and non-developed countries. Developed countries (Japan, USA) tended to have fewer terrorist incidents overall, but also ones that involve less militaristic conflict. There seems to be no strong predictor of the severity of casualties in these developed countries, which may have led our model to overfit onto random noise. On the other hand, non-developed countries were tied strongly with military conflict, targets, and weapons. This suggest an important, but somewhat expected, result that more war-prone regions will tend to have terror attacks with higher casualties.
-
-
->andrew insert random conclusion here?<
+Our country datasets most notably showed the difference between developed and non-developed countries. Developed countries (Japan, USA) tended to have fewer terrorist incidents overall, but also ones that involve less militaristic conflict. There seems to be no strong predictor of the severity of casualties in these developed countries, which may have led our model to overfit onto random noise. On the other hand, non-developed countries were tied strongly with military conflict, targets, and weapons. This suggest an important, but somewhat expected, result that more war-prone regions will tend to have terror attacks with higher casualties. For kidnappings, our analysis revealed an increasing trend of recent kidnappings ending with the successful release of the hostages.
 
 As terrorist evolve in the modern day, local authorities continue to stay a step ahead to prevent their attacks. Knowing what factors, such as location, weapons available, socioeconomic/political tensions, and potential targets can let authorities better predict where the next big attack may be.
 
